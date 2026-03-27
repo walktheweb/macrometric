@@ -1,10 +1,54 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, ReactNode } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getGoals, updateGoals, getRaceGoal, saveRaceGoal, getDaysUntilRace, changePassword, logout } from '../lib/api';
 
+const getVersionString = () => {
+  return '2.0.001';
+};
+
+interface CollapsibleSectionProps {
+  title: string;
+  icon: string;
+  defaultExpanded?: boolean;
+  gradient?: boolean;
+  children: ReactNode;
+}
+
+function CollapsibleSection({ title, icon, defaultExpanded = false, gradient = false, children }: CollapsibleSectionProps) {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+
+  const baseClasses = gradient
+    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white'
+    : 'bg-white dark:bg-gray-800 shadow-sm';
+
+  return (
+    <div className={`${baseClasses} rounded-2xl overflow-hidden transition-all duration-300`}>
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full p-5 flex items-center justify-between text-left"
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">{icon}</span>
+          <h2 className={`font-semibold text-lg ${gradient ? 'text-white' : 'text-gray-800 dark:text-gray-100'}`}>
+            {title}
+          </h2>
+        </div>
+        <span className={`text-xl transition-transform duration-300 ${gradient ? 'text-white' : 'text-gray-400'} ${isExpanded ? 'rotate-180' : ''}`}>
+          ▼
+        </span>
+      </button>
+      <div className={`overflow-hidden transition-all duration-300 ${isExpanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}>
+        <div className={gradient ? 'p-5 pt-0' : 'p-5 pt-0'}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Settings() {
-  const { userId, loading: authLoading } = useAuth();
+  const { userId } = useAuth();
   const { theme, setTheme } = useTheme();
   const [calories, setCalories] = useState(1500);
   const [fatPct, setFatPct] = useState(75);
@@ -34,11 +78,55 @@ export default function Settings() {
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
+  const [releaseNotes, setReleaseNotes] = useState<{ date: string; note: string }[]>([
+    { date: '28.03.2026', note: 'v2.0.001 - Edit/Delete My Foods, No duplicate add' },
+    { date: '27.03.2026', note: 'Added OCR nutrition label scanner (Scan Label)' },
+    { date: '27.03.2026', note: 'Added Import Foods with all fields' },
+    { date: '27.03.2026', note: 'Added collapsible sections and About page' },
+    { date: '27.03.2026', note: 'Added password protection' },
+  ]);
+
+  const [featureRequests, setFeatureRequests] = useState<{ id: string; text: string }[]>([]);
+  const [newFeature, setNewFeature] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const [newReleaseNote, setNewReleaseNote] = useState('');
+
   useEffect(() => {
     if (userId) {
       loadData();
     }
   }, [userId]);
+
+  useEffect(() => {
+    const savedNotes = localStorage.getItem('macrometric_release_notes');
+    if (savedNotes) {
+      setReleaseNotes(JSON.parse(savedNotes));
+    }
+    const savedFeatures = localStorage.getItem('macrometric_feature_requests');
+    if (savedFeatures) {
+      setFeatureRequests(JSON.parse(savedFeatures));
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('macrometric_release_notes', JSON.stringify(releaseNotes));
+  }, [releaseNotes]);
+
+  useEffect(() => {
+    localStorage.setItem('macrometric_feature_requests', JSON.stringify(featureRequests));
+  }, [featureRequests]);
+
+  const addReleaseNote = (note: string) => {
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, '0');
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const yyyy = now.getFullYear();
+    const dateStr = `${dd}.${mm}.${yyyy}`;
+    
+    const updated = [{ date: dateStr, note }, ...releaseNotes];
+    setReleaseNotes(updated);
+  };
 
   const loadData = async () => {
     if (!userId) return;
@@ -143,54 +231,81 @@ export default function Settings() {
   const handleLogout = () => {
     if (confirm('Are you sure you want to logout? You will need to enter password again.')) {
       logout();
-      // Dispatch event to notify App.tsx
       window.dispatchEvent(new Event('auth-change'));
     }
   };
 
-  const adjustPct = (type: 'fat' | 'protein' | 'carbs', delta: number) => {
-    let currentVal: number;
+  const normalizePercentages = (fat: number, protein: number, carbs: number) => {
+    const total = fat + protein + carbs;
     
+    if (total === 100) {
+      return { fat, protein, carbs };
+    }
+    
+    if (total === 0) {
+      return { fat: 0, protein: 0, carbs: 0 };
+    }
+    
+    const factor = 100 / total;
+    let newFat = Math.round(fat * factor);
+    let newProtein = Math.round(protein * factor);
+    let newCarbs = 100 - newFat - newProtein;
+    
+    return { fat: newFat, protein: newProtein, carbs: newCarbs };
+  };
+
+  const adjustPct = (type: 'fat' | 'protein' | 'carbs', delta: number) => {
+    let newFat = fatPct;
+    let newProtein = proteinPct;
+    let newCarbs = carbsPct;
+
     if (type === 'fat') {
-      currentVal = fatPct;
+      newFat = Math.max(0, Math.min(100, fatPct + delta));
     } else if (type === 'protein') {
-      currentVal = proteinPct;
+      newProtein = Math.max(0, Math.min(100, proteinPct + delta));
     } else {
-      currentVal = carbsPct;
+      newCarbs = Math.max(0, Math.min(100, carbsPct + delta));
     }
 
-    const newVal = Math.max(0, Math.min(100, currentVal + delta));
-    
-    if (type === 'fat') {
-      const otherTotal = proteinPct + carbsPct;
-      if (otherTotal + newVal > 100) {
-        const excess = (otherTotal + newVal) - 100;
-        setProteinPct(Math.max(0, Math.round(proteinPct - excess / 2)));
-        setCarbsPct(Math.max(0, Math.round(carbsPct - excess / 2)));
-      }
-      setFatPct(newVal);
-    } else if (type === 'protein') {
-      const otherTotal = fatPct + carbsPct;
-      if (otherTotal + newVal > 100) {
-        const excess = (otherTotal + newVal) - 100;
-        setFatPct(Math.max(0, Math.round(fatPct - excess / 2)));
-        setCarbsPct(Math.max(0, Math.round(carbsPct - excess / 2)));
-      }
-      setProteinPct(newVal);
-    } else {
-      const otherTotal = fatPct + proteinPct;
-      if (otherTotal + newVal > 100) {
-        const excess = (otherTotal + newVal) - 100;
-        setFatPct(Math.max(0, Math.round(fatPct - excess / 2)));
-        setProteinPct(Math.max(0, Math.round(proteinPct - excess / 2)));
-      }
-      setCarbsPct(newVal);
-    }
+    const normalized = normalizePercentages(newFat, newProtein, newCarbs);
+    setFatPct(normalized.fat);
+    setProteinPct(normalized.protein);
+    setCarbsPct(normalized.carbs);
+  };
+
+  const addFeatureRequest = () => {
+    if (!newFeature.trim()) return;
+    const updated = [...featureRequests, { id: Date.now().toString(), text: newFeature.trim() }];
+    setFeatureRequests(updated);
+    setNewFeature('');
+  };
+
+  const startEdit = (id: string, text: string) => {
+    setEditingId(id);
+    setEditText(text);
+  };
+
+  const saveEdit = () => {
+    if (!editingId || !editText.trim()) return;
+    const updated = featureRequests.map(f => f.id === editingId ? { ...f, text: editText.trim() } : f);
+    setFeatureRequests(updated);
+    setEditingId(null);
+    setEditText('');
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditText('');
+  };
+
+  const deleteFeatureRequest = (id: string) => {
+    const updated = featureRequests.filter(f => f.id !== id);
+    setFeatureRequests(updated);
   };
 
   const targetWeight = calculateTargetWeight();
 
-  if (authLoading || loading) {
+  if (loading) {
     return (
       <div className="flex justify-center py-12">
         <div className="animate-pulse text-gray-500 dark:text-gray-400">Loading...</div>
@@ -199,261 +314,11 @@ export default function Settings() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Theme Toggle */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5">
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Appearance</h2>
-        <div className="flex gap-2">
-          {(['system', 'light', 'dark'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTheme(t)}
-              className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
-                theme === t
-                  ? 'bg-primary-500 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
-              }`}
-            >
-              {t === 'system' ? '💻' : t === 'light' ? '☀️' : '🌙'} {t.charAt(0).toUpperCase() + t.slice(1)}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Race Goal */}
-      <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-5 text-white">
-        <div className="flex items-center gap-3 mb-4">
-          <span className="text-2xl">🚴</span>
-          <div>
-            <h2 className="font-semibold text-lg">Race Goal</h2>
-            <p className="text-sm opacity-80">{daysUntilRace} days to go</p>
-          </div>
-        </div>
-        
-        <div className="bg-white/10 rounded-xl p-4 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm opacity-80 mb-1">Race Date</label>
-              <input
-                type="date"
-                value={raceDate}
-                onChange={(e) => setRaceDate(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/50 focus:ring-2 focus:ring-white outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm opacity-80 mb-1">Target Weight</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  step="0.1"
-                  value={raceTargetWeight}
-                  onChange={(e) => setRaceTargetWeight(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/50 focus:ring-2 focus:ring-white outline-none"
-                />
-                <span>kg</span>
-              </div>
-            </div>
-          </div>
-          
-          <div>
-            <label className="block text-sm opacity-80 mb-1">Weekly Weight Target</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                step="0.1"
-                min="0.1"
-                max="2"
-                value={raceWeeklyTarget}
-                onChange={(e) => setRaceWeeklyTarget(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/50 focus:ring-2 focus:ring-white outline-none"
-              />
-              <span>kg/week</span>
-            </div>
-            <p className="text-xs opacity-70 mt-1">Adjust as your progress changes</p>
-          </div>
-          
-          <button
-            onClick={handleSaveRaceGoal}
-            className={`w-full py-2 rounded-lg font-semibold transition-colors ${
-              raceSaved
-                ? 'bg-green-400 text-white'
-                : 'bg-white text-blue-600 hover:bg-white/90'
-            }`}
-          >
-            {raceSaved ? '✓ Saved!' : 'Save Race Goal'}
-          </button>
-        </div>
-      </div>
-
-      {/* Password Protection */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-            <span>🔒</span> Password Protection
-          </h2>
-          {!showPasswordForm && (
-            <button
-              onClick={() => setShowPasswordForm(true)}
-              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-            >
-              Change Password
-            </button>
-          )}
-        </div>
-        
-        {passwordSuccess && (
-          <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-lg text-center">
-            Password changed successfully!
-          </div>
-        )}
-        
-        {showPasswordForm ? (
-          <form onSubmit={handleChangePassword} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Current Password</label>
-              <input
-                type="password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">New Password</label>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Confirm New Password</label>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-              />
-            </div>
-            
-            {passwordError && (
-              <div className="p-3 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-sm">
-                {passwordError}
-              </div>
-            )}
-            
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowPasswordForm(false);
-                  setCurrentPassword('');
-                  setNewPassword('');
-                  setConfirmPassword('');
-                  setPasswordError('');
-                }}
-                className="flex-1 py-3 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 font-semibold rounded-xl hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="flex-1 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors"
-              >
-                Change Password
-              </button>
-            </div>
-          </form>
-        ) : (
-          <div className="space-y-4">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Your app is protected with a password. Only people with the password can access your data.
-            </p>
-            <button
-              onClick={handleLogout}
-              className="w-full py-3 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-semibold rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-            >
-              Logout (require password again)
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Stats */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5">
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Your Stats</h2>
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Current Weight (kg)</label>
-            <input
-              type="number"
-              value={weight}
-              onChange={(e) => setWeight(Number(e.target.value))}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Height (cm)</label>
-            <input
-              type="number"
-              value={height}
-              onChange={(e) => setHeight(Number(e.target.value))}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-            />
-          </div>
-        </div>
-        
-        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Target BMI</label>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={bmiInput}
-                onChange={(e) => setBmiInput(e.target.value)}
-                onBlur={(e) => {
-                  const num = parseFloat(e.target.value);
-                  if (!isNaN(num) && num >= 15 && num <= 40) {
-                    const rounded = Math.round(num * 10) / 10;
-                    setTargetBmi(rounded);
-                    setBmiInput(rounded.toString());
-                  } else {
-                    setBmiInput(targetBmi.toString());
-                  }
-                }}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Target Weight</label>
-              <div className="px-4 py-3 bg-white dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600">
-                <span className={`text-xl font-bold ${targetBmi < 18.5 ? 'text-blue-600' : targetBmi < 25 ? 'text-green-600' : targetBmi < 30 ? 'text-amber-500' : 'text-red-600'}`}>
-                  {targetWeight || '—'}
-                </span>
-                <span className="text-sm text-gray-500 ml-1">kg</span>
-              </div>
-            </div>
-          </div>
-          {weight && targetWeight && (
-            <div className="mt-3 text-center">
-              <span className="text-sm text-gray-600 dark:text-gray-300">
-                {weight > targetWeight ? 'To lose: ' : weight < targetWeight ? 'To gain: ' : 'At target!'}
-                <span className={`font-semibold ${weight > targetWeight ? 'text-green-600' : weight < targetWeight ? 'text-red-600' : 'text-green-600'}`}>
-                  {Math.abs(Math.round((weight - targetWeight) * 10) / 10)} kg
-                </span>
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-
+    <div className="space-y-4">
       {/* Daily Goals */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5">
+      <CollapsibleSection title="Daily Goals" icon="🎯" defaultExpanded={true}>
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Daily Goals</h2>
+          <span className="text-sm text-gray-500 dark:text-gray-400">Set your macros</span>
           <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
             <button
               onClick={() => setMode('percent')}
@@ -589,12 +454,338 @@ export default function Settings() {
         >
           {saved ? '✓ Saved!' : 'Save Goals'}
         </button>
-      </div>
+      </CollapsibleSection>
 
-      <div className="text-center text-sm text-gray-400 dark:text-gray-500 pt-4">
-        <p>MacroMetric v2.0.0</p>
-        <p className="mt-1">Data synced to cloud</p>
-      </div>
+      {/* Race Goal */}
+      <CollapsibleSection title="Race Goal" icon="🚴" defaultExpanded={true} gradient>
+        <div className="bg-white/10 rounded-xl p-4 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm opacity-80 mb-1">Race Date</label>
+              <input
+                type="date"
+                value={raceDate}
+                onChange={(e) => setRaceDate(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/50 focus:ring-2 focus:ring-white outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm opacity-80 mb-1">Target Weight</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  step="0.1"
+                  value={raceTargetWeight}
+                  onChange={(e) => setRaceTargetWeight(Number(e.target.value))}
+                  className="w-full px-3 py-2 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/50 focus:ring-2 focus:ring-white outline-none"
+                />
+                <span className="text-white">kg</span>
+              </div>
+            </div>
+          </div>
+          
+          <div>
+            <label className="block text-sm opacity-80 mb-1">Weekly Weight Target</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                step="0.1"
+                min="0.1"
+                max="2"
+                value={raceWeeklyTarget}
+                onChange={(e) => setRaceWeeklyTarget(Number(e.target.value))}
+                className="w-full px-3 py-2 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/50 focus:ring-2 focus:ring-white outline-none"
+              />
+              <span className="text-white">kg/week</span>
+            </div>
+            <p className="text-xs opacity-70 mt-1">{daysUntilRace} days until race</p>
+          </div>
+          
+          <button
+            onClick={handleSaveRaceGoal}
+            className={`w-full py-2 rounded-lg font-semibold transition-colors ${
+              raceSaved
+                ? 'bg-green-400 text-white'
+                : 'bg-white text-blue-600 hover:bg-white/90'
+            }`}
+          >
+            {raceSaved ? '✓ Saved!' : 'Save Race Goal'}
+          </button>
+        </div>
+      </CollapsibleSection>
+
+      {/* Your Stats */}
+      <CollapsibleSection title="Your Stats" icon="📊">
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Current Weight (kg)</label>
+            <input
+              type="number"
+              value={weight}
+              onChange={(e) => setWeight(Number(e.target.value))}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Height (cm)</label>
+            <input
+              type="number"
+              value={height}
+              onChange={(e) => setHeight(Number(e.target.value))}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+            />
+          </div>
+        </div>
+        
+        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Target BMI</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={bmiInput}
+                onChange={(e) => setBmiInput(e.target.value)}
+                onBlur={(e) => {
+                  const num = parseFloat(e.target.value);
+                  if (!isNaN(num) && num >= 15 && num <= 40) {
+                    const rounded = Math.round(num * 10) / 10;
+                    setTargetBmi(rounded);
+                    setBmiInput(rounded.toString());
+                  } else {
+                    setBmiInput(targetBmi.toString());
+                  }
+                }}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Target Weight</label>
+              <div className="px-4 py-3 bg-white dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600">
+                <span className={`text-xl font-bold ${targetBmi < 18.5 ? 'text-blue-600' : targetBmi <= 25 ? 'text-green-600' : targetBmi < 30 ? 'text-amber-500' : 'text-red-600'}`}>
+                  {targetWeight || '—'}
+                </span>
+                <span className="text-sm text-gray-500 ml-1">kg</span>
+              </div>
+            </div>
+          </div>
+          {weight && targetWeight && (
+            <div className="mt-3 text-center">
+              <span className="text-sm text-gray-600 dark:text-gray-300">
+                {weight > targetWeight ? 'To lose: ' : weight < targetWeight ? 'To gain: ' : 'At target!'}
+                <span className={`font-semibold ${weight > targetWeight ? 'text-green-600' : weight < targetWeight ? 'text-red-600' : 'text-green-600'}`}>
+                  {Math.abs(Math.round((weight - targetWeight) * 10) / 10)} kg
+                </span>
+              </span>
+            </div>
+          )}
+        </div>
+      </CollapsibleSection>
+
+      {/* Appearance */}
+      <CollapsibleSection title="Appearance" icon="🎨">
+        <div className="flex gap-2">
+          {(['system', 'light', 'dark'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTheme(t)}
+              className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
+                theme === t
+                  ? 'bg-primary-500 text-white'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+              }`}
+            >
+              {t === 'system' ? '💻' : t === 'light' ? '☀️' : '🌙'} {t.charAt(0).toUpperCase() + t.slice(1)}
+            </button>
+          ))}
+        </div>
+      </CollapsibleSection>
+
+      {/* Password */}
+      <CollapsibleSection title="Password" icon="🔒">
+        {passwordSuccess && (
+          <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-lg text-center">
+            Password changed successfully!
+          </div>
+        )}
+        
+        {showPasswordForm ? (
+          <form onSubmit={handleChangePassword} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Current Password</label>
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">New Password</label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Confirm New Password</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+              />
+            </div>
+            
+            {passwordError && (
+              <div className="p-3 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-sm">
+                {passwordError}
+              </div>
+            )}
+            
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPasswordForm(false);
+                  setCurrentPassword('');
+                  setNewPassword('');
+                  setConfirmPassword('');
+                  setPasswordError('');
+                }}
+                className="flex-1 py-3 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 font-semibold rounded-xl hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="flex-1 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors"
+              >
+                Change Password
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Your app is protected with a password.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowPasswordForm(true)}
+                className="flex-1 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors"
+              >
+                Change Password
+              </button>
+              <button
+                onClick={handleLogout}
+                className="flex-1 py-3 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-semibold rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        )}
+      </CollapsibleSection>
+
+      {/* About */}
+      <CollapsibleSection title="About" icon="ℹ️">
+        <div className="space-y-4">
+          <div className="text-center pb-2">
+            <p className="text-sm text-gray-500 dark:text-gray-400">Created by</p>
+            <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">JOB</p>
+            <p className="text-xs text-gray-400 mt-1">v{getVersionString()}</p>
+          </div>
+
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+            <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-2">Release Notes</h3>
+            <div className="space-y-2 max-h-40 overflow-y-auto">
+              {releaseNotes.map((note, index) => (
+                <div key={index} className="text-sm bg-gray-50 dark:bg-gray-700 rounded-lg p-2">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{note.date}</span>
+                  <p className="text-gray-700 dark:text-gray-200">{note.note}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex gap-2">
+              <input
+                type="text"
+                value={newReleaseNote}
+                onChange={(e) => setNewReleaseNote(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newReleaseNote.trim()) {
+                    addReleaseNote(newReleaseNote.trim());
+                    setNewReleaseNote('');
+                  }
+                }}
+                placeholder="Add release note..."
+                className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+              />
+              <button
+                onClick={() => {
+                  if (newReleaseNote.trim()) {
+                    addReleaseNote(newReleaseNote.trim());
+                    setNewReleaseNote('');
+                  }
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
+              >
+                +
+              </button>
+            </div>
+          </div>
+
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+            <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-2">Feature Requests / Todo</h3>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {featureRequests.length === 0 && (
+                <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-2">No feature requests yet</p>
+              )}
+              {featureRequests.map((feature) => (
+                <div key={feature.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700 rounded-lg p-2">
+                  {editingId === feature.id ? (
+                    <>
+                      <input
+                        type="text"
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        className="flex-1 px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                        autoFocus
+                      />
+                      <button onClick={saveEdit} className="text-green-600 hover:text-green-700 p-1">💾</button>
+                      <button onClick={cancelEdit} className="text-gray-500 hover:text-gray-600 p-1">✖</button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex-1 text-sm text-gray-700 dark:text-gray-200">{feature.text}</span>
+                      <button onClick={() => startEdit(feature.id, feature.text)} className="text-blue-500 hover:text-blue-600 p-1">🔄</button>
+                      <button onClick={() => deleteFeatureRequest(feature.id)} className="text-red-500 hover:text-red-600 p-1">🗑️</button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex gap-2">
+              <input
+                type="text"
+                value={newFeature}
+                onChange={(e) => setNewFeature(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addFeatureRequest()}
+                placeholder="Add feature request..."
+                className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+              />
+              <button
+                onClick={addFeatureRequest}
+                className="px-4 py-2 bg-primary-500 text-white rounded-xl hover:bg-primary-600 transition-colors"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        </div>
+      </CollapsibleSection>
     </div>
   );
 }

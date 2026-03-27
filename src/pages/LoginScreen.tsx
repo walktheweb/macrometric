@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 
+const getVersionString = () => {
+  return '2.0.001';
+};
+
 export default function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -96,6 +100,9 @@ export default function LoginScreen({ onAuthenticated }: { onAuthenticated: () =
 
           <p className="text-xs text-gray-400 text-center mt-6">
             Protected by password authentication
+          </p>
+          <p className="text-xs text-gray-300 text-center mt-2">
+            v{getVersionString()}
           </p>
         </div>
       </div>
