@@ -1,6 +1,8 @@
+import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider } from './contexts/AuthContext';
+import { isAuthenticated } from './lib/api';
 import Dashboard from './pages/Dashboard';
 import FoodLog from './pages/FoodLog';
 import History from './pages/History';
@@ -9,8 +11,33 @@ import Settings from './pages/Settings';
 import MyFoods from './pages/MyFoods';
 import Trips from './pages/Trips';
 import Layout from './components/Layout';
+import LoginScreen from './pages/LoginScreen';
 
 export default function App() {
+  const [authenticated, setAuthenticated] = useState(false);
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    setAuthenticated(isAuthenticated());
+    setChecking(false);
+  }, []);
+
+  const handleAuthenticated = () => {
+    setAuthenticated(true);
+  };
+
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-pulse text-gray-500">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!authenticated) {
+    return <LoginScreen onAuthenticated={handleAuthenticated} />;
+  }
+
   return (
     <ThemeProvider>
       <AuthProvider>

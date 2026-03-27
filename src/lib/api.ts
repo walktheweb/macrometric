@@ -827,3 +827,55 @@ export async function getWeeksUntilRace(userId: string): Promise<number> {
   const days = await getDaysUntilRace(userId);
   return days / 7;
 }
+
+// Password / Authentication
+export function isAuthenticated(): boolean {
+  return localStorage.getItem('macrometric_authenticated') === 'true';
+}
+
+export function logout(): void {
+  localStorage.removeItem('macrometric_authenticated');
+}
+
+export async function verifyPassword(password: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('app_password')
+      .eq('id', 'main')
+      .single();
+    
+    if (error || !data) {
+      return false;
+    }
+    
+    return data.app_password === password;
+  } catch {
+    return false;
+  }
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const isValid = await verifyPassword(currentPassword);
+    if (!isValid) {
+      return { success: false, error: 'Current password is incorrect' };
+    }
+
+    const { error } = await supabase
+      .from('app_settings')
+      .update({ 
+        app_password: newPassword,
+        updated_at: Date.now()
+      })
+      .eq('id', 'main');
+
+    if (error) {
+      return { success: false, error: 'Failed to update password' };
+    }
+
+    return { success: true };
+  } catch {
+    return { success: false, error: 'Connection error' };
+  }
+}
