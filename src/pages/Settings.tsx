@@ -143,7 +143,8 @@ export default function Settings() {
   const handleLogout = () => {
     if (confirm('Are you sure you want to logout? You will need to enter password again.')) {
       logout();
-      window.location.reload();
+      // Dispatch event to notify App.tsx
+      window.dispatchEvent(new Event('auth-change'));
     }
   };
 

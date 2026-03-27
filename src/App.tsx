@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider } from './contexts/AuthContext';
@@ -17,10 +17,32 @@ export default function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [checking, setChecking] = useState(true);
 
-  useEffect(() => {
+  const checkAuth = useCallback(() => {
     setAuthenticated(isAuthenticated());
     setChecking(false);
   }, []);
+
+  useEffect(() => {
+    checkAuth();
+    
+    // Listen for storage changes (for cross-tab sync)
+    const handleStorageChange = () => {
+      checkAuth();
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Custom event for logout
+    const handleLogout = () => {
+      checkAuth();
+    };
+    window.addEventListener('auth-change', handleLogout);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('auth-change', handleLogout);
+    };
+  }, [checkAuth]);
 
   const handleAuthenticated = () => {
     setAuthenticated(true);
