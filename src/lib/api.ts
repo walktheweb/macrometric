@@ -1,0 +1,829 @@
+import { supabase } from './supabase';
+
+export interface Food {
+  id?: string;
+  name: string;
+  brand: string | null;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  serving: string;
+  servingSize?: number;
+  netCarbs?: number;
+  packageWeight?: number;
+  packageCount?: number;
+}
+
+export interface FoodLog extends Food {
+  id: string;
+  quantity: number;
+  date: string;
+  createdAt: number;
+  baseMacros?: { calories: number; protein: number; carbs: number; fat: number };
+}
+
+export interface Goal {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  weight?: number;
+  height?: number;
+  targetBmi?: number;
+}
+
+export interface Preset extends Food {
+  id: string;
+}
+
+export interface DayLog {
+  logs: FoodLog[];
+  totals: { calories: number; protein: number; carbs: number; fat: number };
+}
+
+export interface Checkin {
+  id: string;
+  date: string;
+  weight?: number;
+  ketones?: number;
+  glucose?: number;
+  heartRate?: number;
+  bpHigh?: number;
+  bpLow?: number;
+  steps?: number;
+  saturation?: number;
+  cholesterol?: number;
+  ferritin?: number;
+  notes?: string;
+  createdAt: number;
+}
+
+export interface GoalChange {
+  id: string;
+  date: string;
+  field: string;
+  oldValue: string | number;
+  newValue: string | number;
+  createdAt: number;
+}
+
+export interface Trip {
+  id: string;
+  date: string;
+  distance: number;
+  duration: number;
+  avgSpeed: number;
+  avgHeartRate: number;
+  createdAt: number;
+}
+
+export interface RaceGoal {
+  raceDate: string;
+  targetWeight: number;
+  weeklyTarget: number;
+}
+
+export function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).substr(2);
+}
+
+export function getToday(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
+// Helper to get user ID from localStorage (used by components)
+export function getUserId(): string | null {
+  return localStorage.getItem('supabase_user_id');
+}
+
+export function setUserId(userId: string): void {
+  localStorage.setItem('supabase_user_id', userId);
+}
+
+// Food Logs
+export async function getLogs(userId: string, date?: string): Promise<DayLog> {
+  const targetDate = date || getToday();
+  
+  const { data, error } = await supabase
+    .from('food_logs')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('date', targetDate);
+  
+  if (error) {
+    console.error('Error fetching logs:', error);
+    return { logs: [], totals: { calories: 0, protein: 0, carbs: 0, fat: 0 } };
+  }
+  
+  const logs = (data || []) as any[];
+  const filtered = logs.map(log => ({
+    ...log,
+    id: log.id,
+    name: log.name || '',
+    brand: log.brand || null,
+    calories: log.calories || 0,
+    protein: log.protein || 0,
+    carbs: log.carbs || 0,
+    fat: log.fat || 0,
+    serving: log.serving || '1 serving',
+    quantity: log.quantity || 1,
+    date: log.date,
+    createdAt: log.created_at,
+  }));
+  
+  const totals = filtered.reduce(
+    (acc, log) => ({
+      calories: acc.calories + log.calories,
+      protein: acc.protein + log.protein,
+      carbs: acc.carbs + log.carbs,
+      fat: acc.fat + log.fat,
+    }),
+    { calories: 0, protein: 0, carbs: 0, fat: 0 }
+  );
+  
+  return { logs: filtered, totals };
+}
+
+export async function addLog(userId: string, food: Partial<FoodLog>): Promise<FoodLog> {
+  const newLog = {
+    id: generateId(),
+    user_id: userId,
+    name: food.name || '',
+    brand: food.brand || null,
+    calories: food.calories || 0,
+    protein: food.protein || 0,
+    carbs: food.carbs || 0,
+    fat: food.fat || 0,
+    serving: food.serving || '1 serving',
+    serving_size: food.servingSize,
+    net_carbs: food.netCarbs,
+    package_weight: food.packageWeight,
+    package_count: food.packageCount,
+    quantity: food.quantity || 1,
+    date: getToday(),
+    created_at: Date.now(),
+  };
+  
+  const { error } = await supabase.from('food_logs').insert(newLog);
+  
+  if (error) {
+    console.error('Error adding log:', error);
+  }
+  
+  return {
+    ...newLog,
+    createdAt: newLog.created_at,
+  } as FoodLog;
+}
+
+export async function deleteLog(userId: string, id: string): Promise<void> {
+  const { error } = await supabase
+    .from('food_logs')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', userId);
+  
+  if (error) {
+    console.error('Error deleting log:', error);
+  }
+}
+
+export async function updateLog(userId: string, id: string, updates: Partial<FoodLog>): Promise<FoodLog | null> {
+  const dbUpdates: any = { ...updates };
+  delete dbUpdates.id;
+  delete dbUpdates.baseMacros;
+  
+  const { data, error } = await supabase
+    .from('food_logs')
+    .update(dbUpdates)
+    .eq('id', id)
+    .eq('user_id', userId)
+    .select()
+    .single();
+  
+  if (error) {
+    console.error('Error updating log:', error);
+    return null;
+  }
+  
+  return data;
+}
+
+export async function getHistory(userId: string, days = 7): Promise<Record<string, DayLog>> {
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days);
+  const startStr = startDate.toISOString().split('T')[0];
+  
+  const { data, error } = await supabase
+    .from('food_logs')
+    .select('*')
+    .eq('user_id', userId)
+    .gte('date', startStr);
+  
+  if (error) {
+    console.error('Error fetching history:', error);
+    return {};
+  }
+  
+  const logs = (data || []) as any[];
+  const grouped: Record<string, DayLog> = {};
+  
+  for (const log of logs) {
+    if (!grouped[log.date]) {
+      grouped[log.date] = { logs: [], totals: { calories: 0, protein: 0, carbs: 0, fat: 0 } };
+    }
+    grouped[log.date].logs.push(log);
+    grouped[log.date].totals.calories += log.calories || 0;
+    grouped[log.date].totals.protein += log.protein || 0;
+    grouped[log.date].totals.carbs += log.carbs || 0;
+    grouped[log.date].totals.fat += log.fat || 0;
+  }
+  
+  return grouped;
+}
+
+// Presets
+export async function getPresets(userId: string): Promise<Preset[]> {
+  const { data, error } = await supabase
+    .from('presets')
+    .select('*')
+    .eq('user_id', userId);
+  
+  if (error) {
+    console.error('Error fetching presets:', error);
+    return [];
+  }
+  
+  return (data || []) as Preset[];
+}
+
+export async function addPreset(userId: string, food: Food): Promise<Preset> {
+  const newPreset = {
+    id: generateId(),
+    user_id: userId,
+    name: food.name,
+    brand: food.brand,
+    calories: food.calories,
+    protein: food.protein,
+    carbs: food.carbs,
+    fat: food.fat,
+    serving: food.serving,
+    serving_size: food.servingSize,
+    net_carbs: food.netCarbs,
+    created_at: Date.now(),
+  };
+  
+  const { error } = await supabase.from('presets').insert(newPreset);
+  
+  if (error) {
+    console.error('Error adding preset:', error);
+  }
+  
+  return { ...newPreset, createdAt: newPreset.created_at } as unknown as Preset;
+}
+
+export async function deletePreset(userId: string, id: string): Promise<void> {
+  const { error } = await supabase
+    .from('presets')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', userId);
+  
+  if (error) {
+    console.error('Error deleting preset:', error);
+  }
+}
+
+// Goals
+export async function getGoals(userId: string): Promise<Goal> {
+  const { data, error } = await supabase
+    .from('goals')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+  
+  if (error || !data) {
+    return { calories: 1500, protein: 20, carbs: 5, fat: 75, weight: 83, height: 169 };
+  }
+  
+  return {
+    calories: data.calories || 1500,
+    protein: data.protein || 20,
+    carbs: data.carbs || 5,
+    fat: data.fat || 75,
+    weight: data.weight,
+    height: data.height,
+    targetBmi: data.target_bmi,
+  };
+}
+
+export async function updateGoals(userId: string, goals: Goal): Promise<Goal> {
+  const dbGoals = {
+    user_id: userId,
+    calories: goals.calories,
+    protein: goals.protein,
+    carbs: goals.carbs,
+    fat: goals.fat,
+    weight: goals.weight,
+    height: goals.height,
+    target_bmi: goals.targetBmi,
+  };
+  
+  const { error } = await supabase
+    .from('goals')
+    .upsert(dbGoals, { onConflict: 'user_id' });
+  
+  if (error) {
+    console.error('Error updating goals:', error);
+  }
+  
+  return goals;
+}
+
+// Food search (OpenFoodFacts - external, no user ID needed)
+export async function searchFoods(query: string): Promise<{ products: Food[] }> {
+  if (query.length < 2) return { products: [] };
+  
+  try {
+    const response = await fetch(
+      `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=20`
+    );
+    const data = await response.json();
+    
+    const products: Food[] = (data.products || [])
+      .filter((p: any) => p.product_name || p.product_name_en)
+      .map((p: any) => ({
+        id: p.code,
+        name: p.product_name || p.product_name_en || 'Unknown',
+        brand: p.brands || null,
+        calories: p.nutriments?.['energy-kcal_100g'] || 0,
+        protein: p.nutriments?.proteins_100g || 0,
+        carbs: p.nutriments?.carbohydrates_100g || 0,
+        fat: p.nutriments?.fat_100g || 0,
+        serving: p.serving_size || '100g',
+      }));
+    
+    return { products };
+  } catch (error) {
+    console.error('Search failed:', error);
+    return { products: [] };
+  }
+}
+
+export async function searchByBarcode(barcode: string): Promise<{ products: Food[] }> {
+  try {
+    const response = await fetch(
+      `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`
+    );
+    const data = await response.json();
+    
+    if (data.status === 1 && data.product) {
+      const product = data.product;
+      return {
+        products: [{
+          id: product.code,
+          name: product.product_name || product.product_name_en || 'Unknown Product',
+          brand: product.brands || null,
+          calories: product.nutriments?.['energy-kcal_100g'] || 0,
+          protein: product.nutriments?.proteins_100g || 0,
+          carbs: product.nutriments?.carbohydrates_100g || 0,
+          fat: product.nutriments?.fat_100g || 0,
+          serving: product.serving_size || '100g',
+        }]
+      };
+    }
+    return { products: [] };
+  } catch (error) {
+    console.error('Barcode search failed:', error);
+    return { products: [] };
+  }
+}
+
+// My Foods
+export async function getMyFoods(userId: string): Promise<Food[]> {
+  const { data, error } = await supabase
+    .from('my_foods')
+    .select('*')
+    .eq('user_id', userId);
+  
+  if (error) {
+    console.error('Error fetching my foods:', error);
+    return [];
+  }
+  
+  return (data || []).map((f: any) => ({
+    id: f.id,
+    name: f.name,
+    brand: f.brand,
+    calories: f.calories,
+    protein: f.protein,
+    carbs: f.carbs,
+    fat: f.fat,
+    serving: f.serving,
+    servingSize: f.serving_size,
+    netCarbs: f.net_carbs,
+    packageWeight: f.package_weight,
+    packageCount: f.package_count,
+  }));
+}
+
+export async function addMyFood(userId: string, food: Omit<Food, 'id'>): Promise<Food> {
+  const newFood = {
+    id: generateId(),
+    user_id: userId,
+    name: food.name,
+    brand: food.brand,
+    calories: food.calories,
+    protein: food.protein,
+    carbs: food.carbs,
+    fat: food.fat,
+    serving: food.serving,
+    serving_size: food.servingSize,
+    net_carbs: food.netCarbs,
+    package_weight: food.packageWeight,
+    package_count: food.packageCount,
+    created_at: Date.now(),
+  };
+  
+  const { error } = await supabase.from('my_foods').insert(newFood);
+  
+  if (error) {
+    console.error('Error adding my food:', error);
+  }
+  
+  return { ...newFood, id: newFood.id };
+}
+
+export async function updateMyFood(userId: string, food: Food): Promise<Food | null> {
+  const dbFood = {
+    name: food.name,
+    brand: food.brand,
+    calories: food.calories,
+    protein: food.protein,
+    carbs: food.carbs,
+    fat: food.fat,
+    serving: food.serving,
+    serving_size: food.servingSize,
+    net_carbs: food.netCarbs,
+    package_weight: food.packageWeight,
+    package_count: food.packageCount,
+  };
+  
+  const { error } = await supabase
+    .from('my_foods')
+    .update(dbFood)
+    .eq('id', food.id)
+    .eq('user_id', userId);
+  
+  if (error) {
+    console.error('Error updating my food:', error);
+    return null;
+  }
+  
+  return food;
+}
+
+export async function deleteMyFood(userId: string, id: string): Promise<void> {
+  const { error } = await supabase
+    .from('my_foods')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', userId);
+  
+  if (error) {
+    console.error('Error deleting my food:', error);
+  }
+}
+
+export async function searchMyFoods(userId: string, query: string): Promise<Food[]> {
+  const foods = await getMyFoods(userId);
+  const lowerQuery = query.toLowerCase();
+  return foods.filter(f => 
+    f.name.toLowerCase().includes(lowerQuery) ||
+    (f.brand && f.brand.toLowerCase().includes(lowerQuery))
+  );
+}
+
+const SAMPLE_FOODS: Food[] = [
+  { id: 'sample-egg', name: 'Egg (large)', brand: null, calories: 78, protein: 6, carbs: 1, fat: 5, serving: '1 egg (50g)' },
+  { id: 'sample-milk', name: 'Whole Milk', brand: null, calories: 61, protein: 3, carbs: 5, fat: 3, serving: '100ml' },
+  { id: 'sample-chicken', name: 'Chicken Breast', brand: null, calories: 165, protein: 31, carbs: 0, fat: 4, serving: '100g' },
+  { id: 'sample-rice', name: 'White Rice', brand: null, calories: 130, protein: 3, carbs: 28, fat: 0, serving: '100g' },
+  { id: 'sample-bread', name: 'Bread (whole wheat)', brand: null, calories: 247, protein: 13, carbs: 41, fat: 4, serving: '100g' },
+  { id: 'sample-butter', name: 'Butter', brand: null, calories: 717, protein: 1, carbs: 0, fat: 81, serving: '100g' },
+  { id: 'sample-cheese', name: 'Cheddar Cheese', brand: null, calories: 403, protein: 25, carbs: 1, fat: 33, serving: '100g' },
+  { id: 'sample-avocado', name: 'Avocado', brand: null, calories: 160, protein: 2, carbs: 9, fat: 15, serving: '100g' },
+  { id: 'sample-banana', name: 'Banana', brand: null, calories: 89, protein: 1, carbs: 23, fat: 0, serving: '100g' },
+  { id: 'sample-salmon', name: 'Salmon Fillet', brand: null, calories: 208, protein: 20, carbs: 0, fat: 13, serving: '100g' },
+  { id: 'sample-beef', name: 'Beef (ground)', brand: null, calories: 250, protein: 26, carbs: 0, fat: 15, serving: '100g' },
+  { id: 'sample-potato', name: 'Potato', brand: null, calories: 77, protein: 2, carbs: 17, fat: 0, serving: '100g' },
+  { id: 'sample-oats', name: 'Oats', brand: null, calories: 389, protein: 17, carbs: 66, fat: 7, serving: '100g' },
+  { id: 'sample-yogurt', name: 'Greek Yogurt', brand: null, calories: 97, protein: 9, carbs: 4, fat: 5, serving: '100g' },
+  { id: 'sample-almonds', name: 'Almonds', brand: null, calories: 579, protein: 21, carbs: 22, fat: 50, serving: '100g' },
+];
+
+export async function searchAllFoods(userId: string, query: string): Promise<{ myFoods: Food[]; databaseFoods: Food[] }> {
+  if (query.length < 2) return { myFoods: [], databaseFoods: [] };
+  
+  const queryLower = query.toLowerCase();
+  const myFoods = await searchMyFoods(userId, query);
+  
+  let databaseFoods: Food[] = [];
+  try {
+    const searchUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=30&fields=code,product_name,product_name_en,brands,nutriments,serving_size`;
+    
+    const response = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'MacroMetric/1.0 (Food Tracker App)',
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (!contentType?.includes('application/json')) {
+      throw new Error('API returned non-JSON response');
+    }
+    
+    const data = await response.json();
+    
+    databaseFoods = (data.products || [])
+      .filter((p: any) => (p.product_name || p.product_name_en) && (p.product_name || p.product_name_en).trim().length > 0)
+      .map((p: any) => {
+        const name = (p.product_name_en || p.product_name || 'Unknown').substring(0, 100);
+        return {
+          id: p.code,
+          name,
+          brand: p.brands || null,
+          calories: Math.round(p.nutriments?.['energy-kcal_100g'] || 0),
+          protein: Math.round(p.nutriments?.proteins_100g || 0),
+          carbs: Math.round(p.nutriments?.carbohydrates_100g || 0),
+          fat: Math.round(p.nutriments?.fat_100g || 0),
+          serving: p.serving_size || '100g',
+        };
+      });
+  } catch (error) {
+    console.error('Database search failed:', error);
+  }
+  
+  if (databaseFoods.length === 0) {
+    databaseFoods = SAMPLE_FOODS.filter(f => 
+      f.name.toLowerCase().includes(queryLower)
+    );
+  }
+  
+  return { myFoods, databaseFoods };
+}
+
+// Check-ins
+export async function getCheckins(userId: string): Promise<Checkin[]> {
+  const { data, error } = await supabase
+    .from('checkins')
+    .select('*')
+    .eq('user_id', userId)
+    .order('date', { ascending: false });
+  
+  if (error) {
+    console.error('Error fetching checkins:', error);
+    return [];
+  }
+  
+  return (data || []).map((c: any) => ({
+    id: c.id,
+    date: c.date,
+    weight: c.weight,
+    ketones: c.ketones,
+    glucose: c.glucose,
+    heartRate: c.heart_rate,
+    bpHigh: c.bp_high,
+    bpLow: c.bp_low,
+    steps: c.steps,
+    saturation: c.saturation,
+    cholesterol: c.cholesterol,
+    ferritin: c.ferritin,
+    notes: c.notes,
+    createdAt: c.created_at,
+  }));
+}
+
+export async function getTodayCheckin(userId: string): Promise<Checkin | null> {
+  const today = getToday();
+  const { data, error } = await supabase
+    .from('checkins')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('date', today)
+    .single();
+  
+  if (error || !data) {
+    return null;
+  }
+  
+  return {
+    id: data.id,
+    date: data.date,
+    weight: data.weight,
+    ketones: data.ketones,
+    glucose: data.glucose,
+    heartRate: data.heart_rate,
+    bpHigh: data.bp_high,
+    bpLow: data.bp_low,
+    steps: data.steps,
+    saturation: data.saturation,
+    cholesterol: data.cholesterol,
+    ferritin: data.ferritin,
+    notes: data.notes,
+    createdAt: data.created_at,
+  };
+}
+
+export async function saveCheckin(userId: string, data: Omit<Checkin, 'id' | 'date' | 'createdAt'>): Promise<Checkin> {
+  const today = getToday();
+  
+  // Check if today's check-in exists
+  const existing = await getTodayCheckin(userId);
+  
+  const checkin = {
+    id: existing?.id || generateId(),
+    user_id: userId,
+    date: today,
+    weight: data.weight,
+    ketones: data.ketones,
+    glucose: data.glucose,
+    heart_rate: data.heartRate,
+    bp_high: data.bpHigh,
+    bp_low: data.bpLow,
+    steps: data.steps,
+    saturation: data.saturation,
+    cholesterol: data.cholesterol,
+    ferritin: data.ferritin,
+    notes: data.notes,
+    created_at: existing?.createdAt || Date.now(),
+  };
+  
+  const { error } = await supabase
+    .from('checkins')
+    .upsert(checkin, { onConflict: 'id' });
+  
+  if (error) {
+    console.error('Error saving checkin:', error);
+  }
+  
+  return {
+    ...checkin,
+    createdAt: checkin.created_at,
+    heartRate: checkin.heart_rate,
+    bpHigh: checkin.bp_high,
+    bpLow: checkin.bp_low,
+  };
+}
+
+// Trips
+export async function getTrips(userId: string): Promise<Trip[]> {
+  const { data, error } = await supabase
+    .from('trips')
+    .select('*')
+    .eq('user_id', userId)
+    .order('date', { ascending: false });
+  
+  if (error) {
+    console.error('Error fetching trips:', error);
+    return [];
+  }
+  
+  return (data || []).map((t: any) => ({
+    id: t.id,
+    date: t.date,
+    distance: t.distance,
+    duration: t.duration,
+    avgSpeed: t.avg_speed,
+    avgHeartRate: t.avg_heart_rate,
+    createdAt: t.created_at,
+  }));
+}
+
+export async function getTripsByDateRange(userId: string, startDate: string, endDate: string): Promise<Trip[]> {
+  const { data, error } = await supabase
+    .from('trips')
+    .select('*')
+    .eq('user_id', userId)
+    .gte('date', startDate)
+    .lte('date', endDate);
+  
+  if (error) {
+    console.error('Error fetching trips by date range:', error);
+    return [];
+  }
+  
+  return (data || []).map((t: any) => ({
+    id: t.id,
+    date: t.date,
+    distance: t.distance,
+    duration: t.duration,
+    avgSpeed: t.avg_speed,
+    avgHeartRate: t.avg_heart_rate,
+    createdAt: t.created_at,
+  }));
+}
+
+export async function getWeekTrips(userId: string): Promise<Trip[]> {
+  const today = new Date();
+  const dayOfWeek = today.getDay();
+  const startOfWeek = new Date(today);
+  startOfWeek.setDate(today.getDate() - dayOfWeek);
+  const startStr = startOfWeek.toISOString().split('T')[0];
+  const endStr = getToday();
+  return getTripsByDateRange(userId, startStr, endStr);
+}
+
+export async function saveTrip(userId: string, data: Omit<Trip, 'id' | 'date' | 'createdAt'>): Promise<Trip> {
+  const trip = {
+    id: generateId(),
+    user_id: userId,
+    date: getToday(),
+    distance: data.distance,
+    duration: data.duration,
+    avg_speed: data.avgSpeed,
+    avg_heart_rate: data.avgHeartRate,
+    created_at: Date.now(),
+  };
+  
+  const { error } = await supabase.from('trips').insert(trip);
+  
+  if (error) {
+    console.error('Error saving trip:', error);
+  }
+  
+  return {
+    ...trip,
+    createdAt: trip.created_at,
+    avgSpeed: trip.avg_speed,
+    avgHeartRate: trip.avg_heart_rate,
+  };
+}
+
+export async function deleteTrip(userId: string, id: string): Promise<void> {
+  const { error } = await supabase
+    .from('trips')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', userId);
+  
+  if (error) {
+    console.error('Error deleting trip:', error);
+  }
+}
+
+// Race Goal
+export async function getRaceGoal(userId: string): Promise<RaceGoal> {
+  const { data, error } = await supabase
+    .from('race_goals')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+  
+  if (error || !data) {
+    return { raceDate: '2026-05-23', targetWeight: 80, weeklyTarget: 0.5 };
+  }
+  
+  return {
+    raceDate: data.race_date || '2026-05-23',
+    targetWeight: data.target_weight || 80,
+    weeklyTarget: data.weekly_target || 0.5,
+  };
+}
+
+export async function saveRaceGoal(userId: string, goal: RaceGoal): Promise<RaceGoal> {
+  const dbGoal = {
+    user_id: userId,
+    race_date: goal.raceDate,
+    target_weight: goal.targetWeight,
+    weekly_target: goal.weeklyTarget,
+  };
+  
+  const { error } = await supabase
+    .from('race_goals')
+    .upsert(dbGoal, { onConflict: 'user_id' });
+  
+  if (error) {
+    console.error('Error saving race goal:', error);
+  }
+  
+  return goal;
+}
+
+export async function getDaysUntilRace(userId: string): Promise<number> {
+  const goal = await getRaceGoal(userId);
+  const today = new Date();
+  const raceDate = new Date(goal.raceDate);
+  const diff = raceDate.getTime() - today.getTime();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
+export async function getWeeksUntilRace(userId: string): Promise<number> {
+  const days = await getDaysUntilRace(userId);
+  return days / 7;
+}

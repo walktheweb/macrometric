@@ -1,0 +1,125 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-color: #f9fafb;
+  color: #111827;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.dark body {
+  background-color: #111827;
+  color: #f3f4f6;
+}
+
+input, button, select {
+  touch-action: manipulation;
+}
+
+/* Dark mode overrides using direct CSS */
+.dark {
+  color-scheme: dark;
+}
+
+.dark input,
+.dark button,
+.dark select,
+.dark textarea {
+  color-scheme: dark;
+}
+
+/* Background colors */
+.dark .bg-white { background-color: #1f2937; }
+.dark .bg-gray-50 { background-color: #111827; }
+.dark .bg-gray-100 { background-color: #374151; }
+.dark .bg-gray-200 { background-color: #4b5563; }
+.dark .bg-gray-700 { background-color: #374151; }
+.dark .bg-gray-800 { background-color: #1f2937; }
+.dark .bg-gray-900 { background-color: #111827; }
+
+/* Text colors */
+.dark .text-gray-900 { color: #f3f4f6; }
+.dark .text-gray-800 { color: #e5e7eb; }
+.dark .text-gray-700 { color: #d1d5db; }
+.dark .text-gray-600 { color: #9ca3af; }
+.dark .text-gray-500 { color: #6b7280; }
+.dark .text-gray-400 { color: #9ca3af; }
+
+/* Border colors */
+.dark .border-gray-200 { border-color: #374151; }
+.dark .border-gray-100 { border-color: #374151; }
+
+/* Primary colors */
+.dark .text-primary-600 { color: #60a5fa; }
+.dark .bg-primary-500 { background-color: #3b82f6; }
+.dark .bg-primary-50 { background-color: #1e3a5f; }
+.dark .bg-primary-600 { background-color: #2563eb; }
+
+/* Specific component colors */
+.dark .bg-blue-50 { background-color: #1e3a5f; }
+.dark .bg-blue-100 { background-color: #1e3a5f; }
+.dark .bg-blue-900\/30 { background-color: rgba(30, 58, 95, 0.3); }
+.dark .bg-blue-900\/50 { background-color: rgba(30, 58, 95, 0.5); }
+.dark .bg-blue-900\/20 { background-color: rgba(30, 58, 95, 0.2); }
+
+.dark .text-blue-400 { color: #60a5fa; }
+.dark .text-blue-500 { color: #3b82f6; }
+.dark .text-blue-600 { color: #2563eb; }
+
+.dark .bg-red-50 { background-color: #450a0a; }
+.dark .bg-red-100 { background-color: #450a0a; }
+.dark .bg-red-900\/30 { background-color: rgba(69, 10, 10, 0.3); }
+.dark .bg-red-900\/50 { background-color: rgba(69, 10, 10, 0.5); }
+.dark .text-red-400 { color: #f87171; }
+.dark .text-red-500 { color: #ef4444; }
+.dark .text-red-600 { color: #dc2626; }
+
+.dark .bg-amber-50 { background-color: #451a03; }
+.dark .bg-amber-100 { background-color: #451a03; }
+.dark .bg-amber-900\/30 { background-color: rgba(69, 26, 3, 0.3); }
+.dark .bg-amber-900\/50 { background-color: rgba(69, 26, 3, 0.5); }
+.dark .bg-amber-900\/20 { background-color: rgba(69, 26, 3, 0.2); }
+.dark .text-amber-400 { color: #fbbf24; }
+.dark .text-amber-500 { color: #f59e0b; }
+.dark .text-amber-600 { color: #d97706; }
+
+.dark .bg-green-50 { background-color: #022c22; }
+.dark .bg-green-100 { background-color: #022c22; }
+.dark .bg-green-500 { background-color: #22c55e; }
+.dark .bg-green-600 { background-color: #16a34a; }
+.dark .bg-green-900\/30 { background-color: rgba(2, 44, 34, 0.3); }
+.dark .bg-green-900\/50 { background-color: rgba(2, 44, 34, 0.5); }
+.dark .bg-green-900\/20 { background-color: rgba(2, 44, 34, 0.2); }
+.dark .text-green-400 { color: #4ade80; }
+.dark .text-green-500 { color: #22c55e; }
+.dark .text-green-600 { color: #16a34a; }
+
+.dark .bg-purple-50 { background-color: #2e1065; }
+.dark .bg-purple-100 { background-color: #2e1065; }
+.dark .bg-purple-900\/30 { background-color: rgba(46, 16, 101, 0.3); }
+.dark .bg-purple-900\/50 { background-color: rgba(46, 16, 101, 0.5); }
+.dark .bg-purple-900\/20 { background-color: rgba(46, 16, 101, 0.2); }
+.dark .text-purple-200 { color: #c4b5fd; }
+.dark .text-purple-300 { color: #a78bfa; }
+.dark .text-purple-400 { color: #8b5cf6; }
+.dark .text-purple-600 { color: #7c3aed; }
+.dark .text-purple-700 { color: #6d28d9; }
+.dark .text-purple-800 { color: #5b21b6; }
+
+/* Shadows */
+.dark .shadow-sm { box-shadow: none; }
+.dark .shadow { box-shadow: none; }
+.dark .shadow-md { box-shadow: none; }
+
+/* Focus ring */
+.dark .focus\:ring-primary-500:focus { --tw-ring-color: #3b82f6; }
+
+/* Gradient adjustments */
+.dark .bg-gradient-to-r { filter: brightness(0.85); }
