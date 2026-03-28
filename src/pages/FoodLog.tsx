@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { searchAllFoods, searchByBarcode, addLog, Food, addMyFood, updateMyFood, deleteMyFood } from '../lib/api';
+import { searchAllFoods, searchByBarcode, addLog, Food, addMyFood, updateMyFoodAndLogs, deleteMyFood } from '../lib/api';
 import BarcodeScanner from '../components/BarcodeScanner';
 import NutritionScanner from '../components/NutritionScanner';
 
@@ -85,33 +85,10 @@ export default function FoodLog() {
 
   const handleAdd = async (food: Food) => {
     if (!userId) return;
-    const displayCarbs = getDisplayCarbs(food);
-    const baseMacros = {
-      calories: food.calories,
-      protein: food.protein,
-      carbs: displayCarbs,
-      fat: food.fat,
-    };
-
-    let multiplier = quantity;
-    if (quantityType === 'grams') {
-      multiplier = quantity / 100;
-    }
-    
-    const loggedFood = {
-      ...food,
-      calories: Math.round(food.calories * multiplier * 10) / 10,
-      protein: Math.round(food.protein * multiplier * 10) / 10,
-      carbs: Math.round(displayCarbs * multiplier * 10) / 10,
-      fat: Math.round(food.fat * multiplier * 10) / 10,
-      serving: quantityType === 'grams' ? `${quantity}g` : `${quantity}`,
-      quantity,
-      baseMacros,
-    };
-    
+    let foodToLog = food;
     const isFromMyFoods = myFoods.some(f => f.id === food.id);
     if (!isFromMyFoods) {
-      await addMyFood(userId, {
+      const savedFood = await addMyFood(userId, {
         name: food.name,
         brand: food.brand,
         calories: food.calories,
@@ -121,7 +98,32 @@ export default function FoodLog() {
         serving: food.serving,
         servingSize: food.servingSize,
       });
+      foodToLog = { ...food, id: savedFood.id };
     }
+
+    const displayCarbs = getDisplayCarbs(foodToLog);
+    const baseMacros = {
+      calories: foodToLog.calories,
+      protein: foodToLog.protein,
+      carbs: displayCarbs,
+      fat: foodToLog.fat,
+    };
+
+    let multiplier = quantity;
+    if (quantityType === 'grams') {
+      multiplier = quantity / 100;
+    }
+    
+    const loggedFood = {
+      ...foodToLog,
+      calories: Math.round(foodToLog.calories * multiplier * 10) / 10,
+      protein: Math.round(foodToLog.protein * multiplier * 10) / 10,
+      carbs: Math.round(displayCarbs * multiplier * 10) / 10,
+      fat: Math.round(foodToLog.fat * multiplier * 10) / 10,
+      serving: quantityType === 'grams' ? `${quantity}g` : `${quantity}`,
+      quantity,
+      baseMacros,
+    };
     
     await addLog(userId, loggedFood);
     navigate('/');
@@ -162,7 +164,7 @@ export default function FoodLog() {
     const { brand, ...rest } = manualFood;
     
     if (editingFood && editingFood.id) {
-      await updateMyFood(userId, { ...editingFood, ...manualFood, brand: brand || null });
+      await updateMyFoodAndLogs(userId, { ...editingFood, ...manualFood, brand: brand || null });
       setEditingFood(null);
     } else {
       await addMyFood(userId, { ...rest, brand: brand || null });

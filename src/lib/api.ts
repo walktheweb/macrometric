@@ -152,12 +152,29 @@ export async function getLogs(userId: string, date?: string): Promise<DayLog> {
   }
   
   const logs = (data || []) as any[];
+  const foodIds = [...new Set(logs.map(log => log.food_id).filter(Boolean))];
+  let myFoodsById: Record<string, any> = {};
+
+  if (foodIds.length > 0) {
+    const { data: myFoods } = await supabase
+      .from('my_foods')
+      .select('id, name, brand')
+      .eq('user_id', userId)
+      .in('id', foodIds);
+
+    myFoodsById = Object.fromEntries((myFoods || []).map((f: any) => [f.id, f]));
+  }
+
   const filtered = logs.map(log => ({
+    ...(myFoodsById[log.food_id] ? {
+      name: myFoodsById[log.food_id].name,
+      brand: myFoodsById[log.food_id].brand,
+    } : {}),
     ...log,
     id: log.id,
     foodId: log.food_id || undefined,
-    name: log.name || '',
-    brand: log.brand || null,
+    name: myFoodsById[log.food_id]?.name || log.name || '',
+    brand: myFoodsById[log.food_id]?.brand || log.brand || null,
     calories: log.calories || 0,
     protein: log.protein || 0,
     carbs: log.carbs || 0,
@@ -554,8 +571,7 @@ export async function updateMyFoodAndLogs(
   const { data: logs, error: fetchError } = await supabase
     .from('food_logs')
     .select('*')
-    .eq('user_id', userId)
-    .eq('food_id', food.id);
+    .eq('user_id', userId);
   
   if (fetchError) {
     console.error('Error fetching logs:', fetchError);
@@ -565,8 +581,14 @@ export async function updateMyFoodAndLogs(
   if (!logs || logs.length === 0) {
     return { food, updatedLogs: 0 };
   }
+
+  const matchingLogs = logs.filter(log => log.food_id === food.id);
+
+  if (matchingLogs.length === 0) {
+    return { food, updatedLogs: 0 };
+  }
   
-  const updates = logs.map(log => {
+  const updates = matchingLogs.map(log => {
     const ratio = log.quantity || 1;
     return {
       id: log.id,
@@ -584,15 +606,22 @@ export async function updateMyFoodAndLogs(
     };
   });
   
-  const { error: updateLogsError } = await supabase
-    .from('food_logs')
-    .upsert(updates);
-  
-  if (updateLogsError) {
-    console.error('Error updating logs:', updateLogsError);
+  let updatedLogs = 0;
+  for (const update of updates) {
+    const { id, ...fields } = update;
+    const { error: rowError } = await supabase
+      .from('food_logs')
+      .update(fields)
+      .eq('id', id)
+      .eq('user_id', userId);
+    if (rowError) {
+      console.error(`Error updating log ${id}:`, rowError);
+    } else {
+      updatedLogs += 1;
+    }
   }
   
-  return { food, updatedLogs: logs.length };
+  return { food, updatedLogs };
 }
 
 export async function deleteMyFood(userId: string, id: string): Promise<void> {
