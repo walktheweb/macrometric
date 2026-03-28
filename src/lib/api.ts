@@ -79,6 +79,7 @@ export interface Trip {
 }
 
 export interface RaceGoal {
+  eventName: string;
   raceDate: string;
   targetWeight: number;
   weeklyTarget: number;
@@ -786,10 +787,11 @@ export async function getRaceGoal(userId: string): Promise<RaceGoal> {
     .single();
   
   if (error || !data) {
-    return { raceDate: '2026-05-23', targetWeight: 80, weeklyTarget: 0.5 };
+    return { eventName: '', raceDate: '2026-05-23', targetWeight: 80, weeklyTarget: 0.5 };
   }
   
   return {
+    eventName: data.event_name || '',
     raceDate: data.race_date || '2026-05-23',
     targetWeight: data.target_weight || 80,
     weeklyTarget: data.weekly_target || 0.5,
@@ -799,6 +801,7 @@ export async function getRaceGoal(userId: string): Promise<RaceGoal> {
 export async function saveRaceGoal(userId: string, goal: RaceGoal): Promise<RaceGoal> {
   const dbGoal = {
     user_id: userId,
+    event_name: goal.eventName,
     race_date: goal.raceDate,
     target_weight: goal.targetWeight,
     weekly_target: goal.weeklyTarget,

@@ -4,7 +4,13 @@ import { useTheme } from '../contexts/ThemeContext';
 import { getGoals, updateGoals, getRaceGoal, saveRaceGoal, getDaysUntilRace, changePassword, logout } from '../lib/api';
 
 const getVersionString = () => {
-  return '2.0.001';
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, '0');
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const yyyy = now.getFullYear();
+  const HH = String(now.getHours()).padStart(2, '0');
+  const MM = String(now.getMinutes()).padStart(2, '0');
+  return `2.0.002.${dd}${mm}${yyyy}${HH}${MM}`;
 };
 
 interface CollapsibleSectionProps {
@@ -65,6 +71,7 @@ export default function Settings() {
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   
+  const [eventName, setEventName] = useState('');
   const [raceDate, setRaceDate] = useState('2026-05-23');
   const [raceTargetWeight, setRaceTargetWeight] = useState(80);
   const [raceWeeklyTarget, setRaceWeeklyTarget] = useState(0.5);
@@ -79,6 +86,7 @@ export default function Settings() {
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
   const [releaseNotes, setReleaseNotes] = useState<{ date: string; note: string }[]>([
+    { date: '28.03.2026', note: 'v2.0.002 - Event Goal with name, Check-in notes, History Goals tab' },
     { date: '28.03.2026', note: 'v2.0.001 - Edit/Delete My Foods, No duplicate add' },
     { date: '27.03.2026', note: 'Added OCR nutrition label scanner (Scan Label)' },
     { date: '27.03.2026', note: 'Added Import Foods with all fields' },
@@ -157,6 +165,7 @@ export default function Settings() {
     setRaceDate(raceGoalData.raceDate);
     setRaceTargetWeight(raceGoalData.targetWeight);
     setRaceWeeklyTarget(raceGoalData.weeklyTarget);
+    setEventName(raceGoalData.eventName || '');
     setDaysUntilRace(await getDaysUntilRace(userId));
     setLoading(false);
   };
@@ -187,6 +196,7 @@ export default function Settings() {
   const handleSaveRaceGoal = async () => {
     if (!userId) return;
     await saveRaceGoal(userId, {
+      eventName,
       raceDate,
       targetWeight: raceTargetWeight,
       weeklyTarget: raceWeeklyTarget,
@@ -456,12 +466,23 @@ export default function Settings() {
         </button>
       </CollapsibleSection>
 
-      {/* Race Goal */}
-      <CollapsibleSection title="Race Goal" icon="🚴" defaultExpanded={true} gradient>
+      {/* Event Goal */}
+      <CollapsibleSection title="Event Goal" icon="🎯" defaultExpanded={true} gradient>
         <div className="bg-white/10 rounded-xl p-4 space-y-4">
+          <div>
+            <label className="block text-sm opacity-80 mb-1">Event Name</label>
+            <input
+              type="text"
+              value={eventName}
+              onChange={(e) => setEventName(e.target.value)}
+              placeholder="e.g. Race, Wedding, Holiday, General"
+              className="w-full px-3 py-2 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/50 focus:ring-2 focus:ring-white outline-none"
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm opacity-80 mb-1">Race Date</label>
+              <label className="block text-sm opacity-80 mb-1">Event Date</label>
               <input
                 type="date"
                 value={raceDate}
@@ -498,7 +519,7 @@ export default function Settings() {
               />
               <span className="text-white">kg/week</span>
             </div>
-            <p className="text-xs opacity-70 mt-1">{daysUntilRace} days until race</p>
+            <p className="text-xs opacity-70 mt-1">{daysUntilRace} days until event</p>
           </div>
           
           <button
@@ -509,7 +530,7 @@ export default function Settings() {
                 : 'bg-white text-blue-600 hover:bg-white/90'
             }`}
           >
-            {raceSaved ? '✓ Saved!' : 'Save Race Goal'}
+            {raceSaved ? '✓ Saved!' : 'Save Event Goal'}
           </button>
         </div>
       </CollapsibleSection>

@@ -36,7 +36,7 @@ export default function Dashboard() {
   const [todayCheckin, setTodayCheckin] = useState<any>(null);
   const [checkins, setCheckins] = useState<any[]>([]);
   const [trips, setTrips] = useState<any[]>([]);
-  const [raceGoal, setRaceGoal] = useState<RaceGoal>({ raceDate: '2026-05-23', targetWeight: 80, weeklyTarget: 0.5 });
+  const [raceGoal, setRaceGoal] = useState<RaceGoal>({ eventName: '', raceDate: '2026-05-23', targetWeight: 80, weeklyTarget: 0.5 });
   const [daysUntil, setDaysUntil] = useState(57);
   const [weeksUntil, setWeeksUntil] = useState(8);
   const [checkinData, setCheckinData] = useState({
@@ -50,6 +50,7 @@ export default function Dashboard() {
     saturation: '',
     cholesterol: '',
     ferritin: '',
+    notes: '',
   });
 
   useEffect(() => {
@@ -92,6 +93,7 @@ export default function Dashboard() {
         saturation: checkin.saturation?.toString() || '',
         cholesterol: checkin.cholesterol?.toString() || '',
         ferritin: checkin.ferritin?.toString() || '',
+        notes: checkin.notes || '',
       });
     }
     
@@ -154,6 +156,7 @@ export default function Dashboard() {
       saturation: checkinData.saturation ? Number(checkinData.saturation) : undefined,
       cholesterol: checkinData.cholesterol ? Number(checkinData.cholesterol) : undefined,
       ferritin: checkinData.ferritin ? Number(checkinData.ferritin) : undefined,
+      notes: checkinData.notes || undefined,
     });
     setShowCheckin(false);
     loadData();
@@ -437,6 +440,17 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
+          </div>
+
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Notes</label>
+            <textarea
+              value={checkinData.notes}
+              onChange={(e) => setCheckinData({...checkinData, notes: e.target.value})}
+              placeholder="Add notes..."
+              rows={2}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+            />
           </div>
           
           <button

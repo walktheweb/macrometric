@@ -2,7 +2,13 @@ import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 const getVersionString = () => {
-  return '2.0.001';
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, '0');
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const yyyy = now.getFullYear();
+  const HH = String(now.getHours()).padStart(2, '0');
+  const MM = String(now.getMinutes()).padStart(2, '0');
+  return `2.0.002.${dd}${mm}${yyyy}${HH}${MM}`;
 };
 
 export default function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {

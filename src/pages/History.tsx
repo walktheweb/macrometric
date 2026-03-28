@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { getHistory, DayLog, getCheckins } from '../lib/api';
+import { getHistory, DayLog, getCheckins, getRaceGoal, RaceGoal } from '../lib/api';
 
 export default function History() {
   const { userId, loading: authLoading } = useAuth();
   const [history, setHistory] = useState<Record<string, DayLog>>({});
   const [checkins, setCheckins] = useState<any[]>([]);
+  const [raceGoal, setRaceGoal] = useState<RaceGoal | null>(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(7);
-  const [activeTab, setActiveTab] = useState<'food' | 'checkin'>('food');
+  const [activeTab, setActiveTab] = useState<'food' | 'checkin' | 'goals'>('food');
 
   useEffect(() => {
     if (userId) {
@@ -19,12 +20,14 @@ export default function History() {
   const loadData = async () => {
     if (!userId) return;
     setLoading(true);
-    const [historyData, checkinsData] = await Promise.all([
+    const [historyData, checkinsData, raceGoalData] = await Promise.all([
       getHistory(userId, days),
       getCheckins(userId),
+      getRaceGoal(userId),
     ]);
     setHistory(historyData);
     setCheckins(checkinsData.slice(0, 30));
+    setRaceGoal(raceGoalData);
     setLoading(false);
   };
 
@@ -89,6 +92,14 @@ export default function History() {
           }`}
         >
           Check-in
+        </button>
+        <button
+          onClick={() => setActiveTab('goals')}
+          className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
+            activeTab === 'goals' ? 'bg-white dark:bg-gray-600 shadow text-primary-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300'
+          }`}
+        >
+          Goals
         </button>
       </div>
 
@@ -231,12 +242,48 @@ export default function History() {
                         </div>
                       )}
                     </div>
+                    {checkin.notes && (
+                      <div className="mt-3 pt-3 border-t border-purple-100 dark:border-purple-800">
+                        <div className="text-sm text-gray-600 dark:text-gray-300 italic">{checkin.notes}</div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
           )}
         </>
+      )}
+
+      {activeTab === 'goals' && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5">
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-3xl">🎯</span>
+            <div>
+              <div className="font-semibold text-lg text-gray-900 dark:text-gray-100">
+                {raceGoal?.eventName || 'Event Goal'}
+              </div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">
+                {raceGoal?.raceDate ? new Date(raceGoal.raceDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }) : 'No date set'}
+              </div>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 text-center">
+              <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                {raceGoal?.targetWeight || '—'} kg
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Target Weight</div>
+            </div>
+            <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-4 text-center">
+              <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                {raceGoal?.weeklyTarget || '—'} kg
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Weekly Target</div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

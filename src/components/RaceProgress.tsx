@@ -61,15 +61,15 @@ export default function RaceProgress({ checkins, raceGoal, daysUntil, weeksUntil
     return (
       <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-5 text-white">
         <div className="flex items-center gap-3 mb-4">
-          <span className="text-2xl">🚴</span>
+          <span className="text-2xl">🎯</span>
           <div>
-            <div className="font-semibold">Race Day: {formatDate(raceGoal.raceDate)}</div>
+            <div className="font-semibold">{raceGoal.eventName ? `${raceGoal.eventName}: ${formatDate(raceGoal.raceDate)}` : formatDate(raceGoal.raceDate)}</div>
             <div className="text-sm opacity-80">{daysUntil} days to go</div>
           </div>
         </div>
         <div className="bg-white/20 rounded-xl p-4 text-center">
           <div className="text-sm opacity-80 mb-1">Log your weight in Check-in</div>
-          <div className="font-medium">to track race progress</div>
+          <div className="font-medium">to track event progress</div>
         </div>
       </div>
     );
@@ -82,9 +82,9 @@ export default function RaceProgress({ checkins, raceGoal, daysUntil, weeksUntil
   return (
     <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-5 text-white">
       <div className="flex items-center gap-3 mb-4">
-        <span className="text-2xl">🚴</span>
+        <span className="text-2xl">🎯</span>
         <div>
-          <div className="font-semibold">Race Day: {formatDate(raceGoal.raceDate)}</div>
+          <div className="font-semibold">{raceGoal.eventName ? `${raceGoal.eventName}: ${formatDate(raceGoal.raceDate)}` : formatDate(raceGoal.raceDate)}</div>
           <div className="text-sm opacity-80">{daysUntil} days to go</div>
         </div>
       </div>
