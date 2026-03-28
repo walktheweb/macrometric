@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { getHistory, DayLog, getCheckins, getRaceGoal, RaceGoal } from '../lib/api';
+import { getHistory, DayLog, getCheckins, getRaceGoal, RaceGoal, deleteCheckin, Checkin } from '../lib/api';
 
 export default function History() {
   const { userId, loading: authLoading } = useAuth();
   const [history, setHistory] = useState<Record<string, DayLog>>({});
-  const [checkins, setCheckins] = useState<any[]>([]);
+  const [checkins, setCheckins] = useState<Checkin[]>([]);
   const [raceGoal, setRaceGoal] = useState<RaceGoal | null>(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(7);
@@ -31,16 +31,28 @@ export default function History() {
     setLoading(false);
   };
 
-  const formatDate = (dateStr: string) => {
+  const handleDeleteCheckin = async (checkinId: string) => {
+    if (!userId) return;
+    if (!confirm('Delete this check-in?')) return;
+    await deleteCheckin(userId, checkinId);
+    loadData();
+  };
+
+  const formatDate = (dateStr: string, timeStr?: string) => {
     const date = new Date(dateStr);
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     
-    if (dateStr === today.toISOString().split('T')[0]) return 'Today';
-    if (dateStr === yesterday.toISOString().split('T')[0]) return 'Yesterday';
+    let dateText = dateStr === today.toISOString().split('T')[0] ? 'Today' : 
+                   dateStr === yesterday.toISOString().split('T')[0] ? 'Yesterday' : 
+                   date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
     
-    return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
+    if (timeStr) {
+      dateText += ` • ${timeStr}`;
+    }
+    
+    return dateText;
   };
 
   if (authLoading || loading) {
@@ -181,12 +193,27 @@ export default function History() {
             <div className="space-y-3">
               {checkins.map(checkin => (
                 <div key={checkin.id} className="bg-purple-50 dark:bg-purple-900/20 rounded-xl shadow-sm overflow-hidden border border-purple-100 dark:border-purple-800">
-                  <div className="px-4 py-3 bg-purple-100 dark:bg-purple-900/50 border-b border-purple-200 dark:border-purple-800">
-                    <div className="font-medium text-purple-800 dark:text-purple-200">{formatDate(checkin.date)}</div>
+                  <div className="px-4 py-3 bg-purple-100 dark:bg-purple-900/50 border-b border-purple-200 dark:border-purple-800 flex justify-between items-center">
+                    <div className="font-medium text-purple-800 dark:text-purple-200">{formatDate(checkin.date, checkin.checkinTime)}</div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleDeleteCheckin(checkin.id)}
+                        className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900 rounded-lg"
+                        title="Delete"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </div>
                   
                   <div className="p-4">
                     <div className="grid grid-cols-4 gap-2">
+                      {checkin.steps && (
+                        <div className="text-center">
+                          <div className="text-lg font-bold text-green-600 dark:text-green-400">{checkin.steps.toLocaleString()}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">steps</div>
+                        </div>
+                      )}
                       {checkin.weight && (
                         <div className="text-center">
                           <div className="text-lg font-bold text-gray-900 dark:text-gray-100">{checkin.weight}</div>
@@ -215,12 +242,6 @@ export default function History() {
                         <div className="text-center">
                           <div className="text-lg font-bold text-gray-900 dark:text-gray-100">{checkin.bpHigh}/{checkin.bpLow}</div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">BP</div>
-                        </div>
-                      )}
-                      {checkin.steps && (
-                        <div className="text-center">
-                          <div className="text-lg font-bold text-green-600 dark:text-green-400">{checkin.steps}</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">steps</div>
                         </div>
                       )}
                       {checkin.saturation && (

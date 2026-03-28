@@ -17,11 +17,43 @@ export interface Food {
 
 export interface FoodLog extends Food {
   id: string;
-  quantity: number;
-  date: string;
-  createdAt: number;
-  baseMacros?: { calories: number; protein: number; carbs: number; fat: number };
+  quantity?: number;
+  baseMacros?: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  };
 }
+
+// Step Goals
+export async function getStepGoal(userId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from('step_goals')
+    .select('daily_goal')
+    .eq('user_id', userId)
+    .single();
+  
+  if (error || !data) {
+    return 10000;
+  }
+  
+  return data.daily_goal || 10000;
+}
+
+export async function saveStepGoal(userId: string, dailyGoal: number): Promise<void> {
+  const { error } = await supabase
+    .from('step_goals')
+    .upsert({
+      user_id: userId,
+      daily_goal: dailyGoal,
+    }, { onConflict: 'user_id' });
+  
+  if (error) {
+    console.error('Error saving step goal:', error);
+  }
+}
+
 
 export interface Goal {
   calories: number;
@@ -45,6 +77,7 @@ export interface DayLog {
 export interface Checkin {
   id: string;
   date: string;
+  checkinTime?: string;
   weight?: number;
   ketones?: number;
   glucose?: number;
@@ -626,6 +659,7 @@ export async function getTodayCheckin(userId: string): Promise<Checkin | null> {
   return {
     id: data.id,
     date: data.date,
+    checkinTime: data.checkin_time,
     weight: data.weight,
     ketones: data.ketones,
     glucose: data.glucose,
@@ -641,29 +675,72 @@ export async function getTodayCheckin(userId: string): Promise<Checkin | null> {
   };
 }
 
-export async function saveCheckin(userId: string, data: Omit<Checkin, 'id' | 'date' | 'createdAt'>): Promise<Checkin> {
-  const today = getToday();
+export async function getCheckinsForDate(userId: string, date: string): Promise<Checkin[]> {
+  const { data, error } = await supabase
+    .from('checkins')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('date', date)
+    .order('checkin_time', { ascending: true, nullsFirst: false });
   
-  // Check if today's check-in exists
-  const existing = await getTodayCheckin(userId);
+  if (error || !data) {
+    return [];
+  }
   
-  const checkin = {
-    id: existing?.id || generateId(),
+  return data.map(d => ({
+    id: d.id,
+    date: d.date,
+    checkinTime: d.checkin_time,
+    weight: d.weight,
+    ketones: d.ketones,
+    glucose: d.glucose,
+    heartRate: d.heart_rate,
+    bpHigh: d.bp_high,
+    bpLow: d.bp_low,
+    steps: d.steps,
+    saturation: d.saturation,
+    cholesterol: d.cholesterol,
+    ferritin: d.ferritin,
+    notes: d.notes,
+    createdAt: d.created_at,
+  }));
+}
+
+export async function saveCheckin(userId: string, data: { 
+  id?: string;
+  date: string;
+  checkinTime?: string;
+  weight?: number;
+  ketones?: number;
+  glucose?: number;
+  heartRate?: number;
+  bpHigh?: number;
+  bpLow?: number;
+  steps?: number;
+  saturation?: number;
+  cholesterol?: number;
+  ferritin?: number;
+  notes?: string;
+}): Promise<Checkin> {
+  const checkin: any = {
+    id: data.id || generateId(),
     user_id: userId,
-    date: today,
-    weight: data.weight,
-    ketones: data.ketones,
-    glucose: data.glucose,
-    heart_rate: data.heartRate,
-    bp_high: data.bpHigh,
-    bp_low: data.bpLow,
-    steps: data.steps,
-    saturation: data.saturation,
-    cholesterol: data.cholesterol,
-    ferritin: data.ferritin,
-    notes: data.notes,
-    created_at: existing?.createdAt || Date.now(),
+    date: data.date,
+    created_at: Date.now(),
   };
+  
+  if (data.checkinTime) checkin.checkin_time = data.checkinTime;
+  if (data.weight !== undefined) checkin.weight = data.weight;
+  if (data.ketones !== undefined) checkin.ketones = data.ketones;
+  if (data.glucose !== undefined) checkin.glucose = data.glucose;
+  if (data.heartRate !== undefined) checkin.heart_rate = data.heartRate;
+  if (data.bpHigh !== undefined) checkin.bp_high = data.bpHigh;
+  if (data.bpLow !== undefined) checkin.bp_low = data.bpLow;
+  if (data.steps !== undefined) checkin.steps = data.steps;
+  if (data.saturation !== undefined) checkin.saturation = data.saturation;
+  if (data.cholesterol !== undefined) checkin.cholesterol = data.cholesterol;
+  if (data.ferritin !== undefined) checkin.ferritin = data.ferritin;
+  if (data.notes !== undefined) checkin.notes = data.notes;
   
   const { error } = await supabase
     .from('checkins')
@@ -674,12 +751,34 @@ export async function saveCheckin(userId: string, data: Omit<Checkin, 'id' | 'da
   }
   
   return {
-    ...checkin,
-    createdAt: checkin.created_at,
+    id: checkin.id,
+    date: checkin.date,
+    checkinTime: checkin.checkin_time,
+    weight: checkin.weight,
+    ketones: checkin.ketones,
+    glucose: checkin.glucose,
     heartRate: checkin.heart_rate,
     bpHigh: checkin.bp_high,
     bpLow: checkin.bp_low,
+    steps: checkin.steps,
+    saturation: checkin.saturation,
+    cholesterol: checkin.cholesterol,
+    ferritin: checkin.ferritin,
+    notes: checkin.notes,
+    createdAt: checkin.created_at,
   };
+}
+
+export async function deleteCheckin(userId: string, checkinId: string): Promise<void> {
+  const { error } = await supabase
+    .from('checkins')
+    .delete()
+    .eq('id', checkinId)
+    .eq('user_id', userId);
+  
+  if (error) {
+    console.error('Error deleting checkin:', error);
+  }
 }
 
 // Trips

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { getLogs, getGoals, deleteLog, updateLog, DayLog, Goal, FoodLog, getTodayCheckin, saveCheckin, getCheckins, getTrips, getRaceGoal, getDaysUntilRace, RaceGoal } from '../lib/api';
+import { getLogs, getGoals, deleteLog, updateLog, DayLog, Goal, FoodLog, getTodayCheckin, saveCheckin, getCheckins, getTrips, getRaceGoal, getDaysUntilRace, RaceGoal, getStepGoal, Checkin } from '../lib/api';
 import RaceProgress from '../components/RaceProgress';
 import TripWidget from '../components/TripWidget';
 
@@ -24,6 +24,23 @@ function MacroBar({ label, current, goal, color }: { label: string; current: num
   );
 }
 
+function getBmiCategory(bmi: number) {
+  if (bmi < 18.5) return { text: '<18.5', color: 'text-blue-500' };
+  if (bmi < 25) return { text: '18.5-25', color: 'text-green-600' };
+  if (bmi < 30) return { text: '25-30', color: 'text-amber-500' };
+  return { text: '30-35', color: 'text-red-500' };
+}
+
+function getBmiPosition(bmi: number) {
+  const minBmi = 15;
+  const maxBmi = 35;
+  return Math.max(0, Math.min(100, ((bmi - minBmi) / (maxBmi - minBmi)) * 100));
+}
+
+function getStepsPosition(steps: number, goal: number) {
+  return Math.min(100, (steps / goal) * 100);
+}
+
 export default function Dashboard() {
   const { userId, loading: authLoading } = useAuth();
   const [logs, setLogs] = useState<DayLog | null>(null);
@@ -33,20 +50,31 @@ export default function Dashboard() {
   const [editQuantity, setEditQuantity] = useState(1);
   const [editQuantityType, setEditQuantityType] = useState<'number' | 'grams'>('number');
   const [showCheckin, setShowCheckin] = useState(false);
-  const [todayCheckin, setTodayCheckin] = useState<any>(null);
-  const [checkins, setCheckins] = useState<any[]>([]);
+  const [editingCheckin, setEditingCheckin] = useState<Checkin | null>(null);
+  const [todayCheckins, setTodayCheckins] = useState<Checkin[]>([]);
+  const [checkins, setCheckins] = useState<Checkin[]>([]);
   const [trips, setTrips] = useState<any[]>([]);
   const [raceGoal, setRaceGoal] = useState<RaceGoal>({ eventName: '', raceDate: '2026-05-23', targetWeight: 80, weeklyTarget: 0.5 });
   const [daysUntil, setDaysUntil] = useState(57);
   const [weeksUntil, setWeeksUntil] = useState(8);
+  const [stepGoal, setStepGoal] = useState(10000);
+  const [lastWeightCheckin, setLastWeightCheckin] = useState<Checkin | null>(null);
+  
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+  const timeString = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  
   const [checkinData, setCheckinData] = useState({
+    id: '',
+    date: today,
+    checkinTime: timeString,
     weight: '',
+    steps: '',
     ketones: '',
     glucose: '',
     heartRate: '',
     bpHigh: '',
     bpLow: '',
-    steps: '',
     saturation: '',
     cholesterol: '',
     ferritin: '',
@@ -63,37 +91,64 @@ export default function Dashboard() {
     if (!userId) return;
     
     setLoading(true);
-    const [logsData, goalsData, checkinsData, tripsData, checkin, raceGoalData] = await Promise.all([
+    const [logsData, goalsData, checkinsData, tripsData, todayData, raceGoalData, stepGoalData] = await Promise.all([
       getLogs(userId),
       getGoals(userId),
       getCheckins(userId),
       getTrips(userId),
       getTodayCheckin(userId),
       getRaceGoal(userId),
+      getStepGoal(userId),
     ]);
     
     setLogs(logsData);
     setGoals(goalsData);
     setCheckins(checkinsData);
     setTrips(tripsData);
-    setTodayCheckin(checkin);
+    setTodayCheckins(todayData ? [todayData] : []);
     setRaceGoal(raceGoalData);
+    setStepGoal(stepGoalData);
     setDaysUntil(await getDaysUntilRace(userId));
     setWeeksUntil(await getDaysUntilRace(userId) / 7);
     
-    if (checkin) {
+    // Get last known weight for BMI
+    const weightCheckin = checkinsData?.find(c => c.weight);
+    setLastWeightCheckin(weightCheckin || null);
+    
+    if (todayData) {
       setCheckinData({
-        weight: checkin.weight?.toString() || '',
-        ketones: checkin.ketones?.toString() || '',
-        glucose: checkin.glucose?.toString() || '',
-        heartRate: checkin.heartRate?.toString() || '',
-        bpHigh: checkin.bpHigh?.toString() || '',
-        bpLow: checkin.bpLow?.toString() || '',
-        steps: checkin.steps?.toString() || '',
-        saturation: checkin.saturation?.toString() || '',
-        cholesterol: checkin.cholesterol?.toString() || '',
-        ferritin: checkin.ferritin?.toString() || '',
-        notes: checkin.notes || '',
+        id: todayData.id || '',
+        date: todayData.date,
+        checkinTime: todayData.checkinTime || timeString,
+        weight: todayData.weight?.toString() || '',
+        steps: todayData.steps?.toString() || '',
+        ketones: todayData.ketones?.toString() || '',
+        glucose: todayData.glucose?.toString() || '',
+        heartRate: todayData.heartRate?.toString() || '',
+        bpHigh: todayData.bpHigh?.toString() || '',
+        bpLow: todayData.bpLow?.toString() || '',
+        saturation: todayData.saturation?.toString() || '',
+        cholesterol: todayData.cholesterol?.toString() || '',
+        ferritin: todayData.ferritin?.toString() || '',
+        notes: todayData.notes || '',
+      });
+    } else {
+      // Reset to default
+      setCheckinData({
+        id: '',
+        date: today,
+        checkinTime: timeString,
+        weight: '',
+        steps: '',
+        ketones: '',
+        glucose: '',
+        heartRate: '',
+        bpHigh: '',
+        bpLow: '',
+        saturation: '',
+        cholesterol: '',
+        ferritin: '',
+        notes: '',
       });
     }
     
@@ -145,20 +200,35 @@ export default function Dashboard() {
 
   const handleSaveCheckin = async () => {
     if (!userId) return;
+    
+    // Check if at least one field is filled
+    const hasData = checkinData.weight || checkinData.steps || checkinData.ketones || 
+                    checkinData.glucose || checkinData.heartRate || checkinData.bpHigh || 
+                    checkinData.bpLow || checkinData.notes;
+    
+    if (!hasData) {
+      alert('Please enter at least one value');
+      return;
+    }
+    
     await saveCheckin(userId, {
+      id: checkinData.id || undefined,
+      date: checkinData.date,
+      checkinTime: checkinData.checkinTime || undefined,
       weight: checkinData.weight ? Number(checkinData.weight) : undefined,
+      steps: checkinData.steps ? Math.round(Number(checkinData.steps)) : undefined,
       ketones: checkinData.ketones ? Number(checkinData.ketones) : undefined,
       glucose: checkinData.glucose ? Number(checkinData.glucose) : undefined,
       heartRate: checkinData.heartRate ? Number(checkinData.heartRate) : undefined,
       bpHigh: checkinData.bpHigh ? Number(checkinData.bpHigh) : undefined,
       bpLow: checkinData.bpLow ? Number(checkinData.bpLow) : undefined,
-      steps: checkinData.steps ? Math.round(Number(checkinData.steps)) : undefined,
       saturation: checkinData.saturation ? Number(checkinData.saturation) : undefined,
       cholesterol: checkinData.cholesterol ? Number(checkinData.cholesterol) : undefined,
       ferritin: checkinData.ferritin ? Number(checkinData.ferritin) : undefined,
       notes: checkinData.notes || undefined,
     });
     setShowCheckin(false);
+    setEditingCheckin(null);
     loadData();
   };
 
@@ -181,25 +251,16 @@ export default function Dashboard() {
   const goalsData = goals || { calories: 1500, protein: 20, carbs: 5, fat: 75, weight: 83, height: 169 };
   const totals = logs?.totals || { calories: 0, protein: 0, carbs: 0, fat: 0 };
 
-  const today = new Date();
-  const dateStr = `${String(today.getDate()).padStart(2, '0')}-${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}`;
+  const dateObj = new Date();
+  const dateStr = `${String(dateObj.getDate()).padStart(2, '0')}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${dateObj.getFullYear()}`;
 
-  const bmi = goalsData.weight && goalsData.height 
-    ? Math.round((goalsData.weight / Math.pow(goalsData.height / 100, 2)) * 10) / 10
+  // Calculate BMI from last known weight
+  const bmiFromLastWeight = lastWeightCheckin?.weight && goalsData.height 
+    ? Math.round((lastWeightCheckin.weight / Math.pow(goalsData.height / 100, 2)) * 10) / 10
     : null;
 
-  const getBmiCategory = (bmi: number) => {
-    if (bmi < 18.5) return { text: '<18.5', color: 'text-blue-500' };
-    if (bmi < 25) return { text: '18.5-25', color: 'text-green-600' };
-    if (bmi < 30) return { text: '25-30', color: 'text-amber-500' };
-    return { text: '30-35', color: 'text-red-500' };
-  };
-
-  const getBmiPosition = (bmi: number) => {
-    const minBmi = 15;
-    const maxBmi = 35;
-    return Math.max(0, Math.min(100, ((bmi - minBmi) / (maxBmi - minBmi)) * 100));
-  };
+  // Get today's steps (aggregate from all check-ins today)
+  const todaySteps = todayCheckins.reduce((sum, c) => sum + (c.steps || 0), 0);
 
   if (editingLog) {
     const baseMacros = editingLog.baseMacros || {
@@ -313,22 +374,56 @@ export default function Dashboard() {
     return (
       <div className="space-y-4">
         <button
-          onClick={() => setShowCheckin(false)}
+          onClick={() => { setShowCheckin(false); setEditingCheckin(null); }}
           className="text-primary-600 dark:text-blue-400 font-medium flex items-center gap-1"
         >
           Back
         </button>
         
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-1">Daily Check-in</h2>
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-1">
+            {editingCheckin ? 'Edit Check-in' : 'Daily Check-in'}
+          </h2>
           <p className="text-gray-500 dark:text-gray-400 mb-4">{dateStr}</p>
           
           <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Date</label>
+                <input
+                  type="date"
+                  value={checkinData.date}
+                  onChange={(e) => setCheckinData({...checkinData, date: e.target.value})}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Time</label>
+                <input
+                  type="time"
+                  value={checkinData.checkinTime}
+                  onChange={(e) => setCheckinData({...checkinData, checkinTime: e.target.value})}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Steps</label>
+              <input
+                type="number"
+                autoFocus
+                value={checkinData.steps}
+                onChange={(e) => setCheckinData({...checkinData, steps: e.target.value})}
+                placeholder="5000"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+              />
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Weight (kg)</label>
               <input
                 type="number"
-                autoFocus
                 value={checkinData.weight}
                 onChange={(e) => setCheckinData({...checkinData, weight: e.target.value})}
                 placeholder="83.5"
@@ -394,17 +489,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Steps</label>
-              <input
-                type="number"
-                value={checkinData.steps}
-                onChange={(e) => setCheckinData({...checkinData, steps: e.target.value})}
-                placeholder="5000"
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-              />
-            </div>
-
             <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-2">
               <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-3">Bloodwork</h3>
               <div className="grid grid-cols-3 gap-4">
@@ -440,17 +524,17 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
-          </div>
 
-          <div className="mt-4">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Notes</label>
-            <textarea
-              value={checkinData.notes}
-              onChange={(e) => setCheckinData({...checkinData, notes: e.target.value})}
-              placeholder="Add notes..."
-              rows={2}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-            />
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Notes</label>
+              <textarea
+                value={checkinData.notes}
+                onChange={(e) => setCheckinData({...checkinData, notes: e.target.value})}
+                placeholder="Add notes..."
+                rows={2}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+              />
+            </div>
           </div>
           
           <button
@@ -466,20 +550,18 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-4">
-      <RaceProgress checkins={checkins} raceGoal={raceGoal} daysUntil={daysUntil} weeksUntil={weeksUntil} />
-      <TripWidget trips={trips} userId={userId} onRefresh={loadData} />
-      
+      {/* BMI Card - from last known weight */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5">
         <div className="flex justify-between items-center mb-2">
-          <span className="text-lg font-semibold text-gray-800 dark:text-gray-100">{dateStr}</span>
-          {bmi && (
-            <span className={`text-sm font-medium ${getBmiCategory(bmi).color}`}>
-              BMI: {bmi} ({getBmiCategory(bmi).text})
+          <span className="text-lg font-semibold text-gray-800 dark:text-gray-100">BMI</span>
+          {lastWeightCheckin && lastWeightCheckin.date && (
+            <span className="text-sm text-gray-500 dark:text-gray-400">
+              {lastWeightCheckin.weight}kg ({new Date(lastWeightCheckin.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })})
             </span>
           )}
         </div>
-        {bmi && (
-          <div className="mb-4">
+        {bmiFromLastWeight ? (
+          <div className="mb-2">
             <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
               <span>15</span>
               <span>18.5</span>
@@ -490,14 +572,73 @@ export default function Dashboard() {
             <div className="relative h-4 rounded-full overflow-hidden" style={{ background: 'linear-gradient(to right, #93c5fd 0%, #93c5fd 17.5%, #86efac 17.5%, #86efac 50%, #fbbf24 50%, #fbbf24 75%, #ef4444 75%, #ef4444 100%)' }}>
               <div 
                 className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white border-2 border-gray-500 rounded-full shadow transition-all"
-                style={{ left: `${getBmiPosition(bmi)}%`, transform: 'translate(-50%, -50%)' }}
+                style={{ left: `${getBmiPosition(bmiFromLastWeight)}%`, transform: 'translate(-50%, -50%)' }}
               />
-              <div className="text-xs text-center font-bold text-gray-800 dark:text-white" style={{ position: 'absolute', left: `${getBmiPosition(bmi)}%`, transform: 'translateX(-50%)', top: '18px' }}>
-                {bmi}
+              <div className="text-xs text-center font-bold text-gray-800 dark:text-white absolute" style={{ left: `${getBmiPosition(bmiFromLastWeight)}%`, transform: 'translateX(-50%)', top: '18px' }}>
+                {bmiFromLastWeight}
               </div>
             </div>
           </div>
+        ) : (
+          <div className="mb-2">
+            <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+              <span>15</span>
+              <span>18.5</span>
+              <span>25</span>
+              <span>30</span>
+              <span>35</span>
+            </div>
+            <div className="relative h-4 rounded-full overflow-hidden" style={{ background: 'linear-gradient(to right, #93c5fd 0%, #93c5fd 17.5%, #86efac 17.5%, #86efac 50%, #fbbf24 50%, #fbbf24 75%, #ef4444 75%, #ef4444 100%)' }}>
+              <div 
+                className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white border-2 border-gray-500 rounded-full shadow"
+                style={{ left: '100%', transform: 'translate(-50%, -50%)' }}
+              />
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 text-center">Check-in first</p>
+          </div>
         )}
+        {bmiFromLastWeight && (
+          <div className="text-center">
+            <span className={`text-sm font-medium ${getBmiCategory(bmiFromLastWeight).color}`}>
+              {getBmiCategory(bmiFromLastWeight).text}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Steps Card */}
+      <div className="bg-green-50 dark:bg-green-900/20 rounded-2xl shadow-sm p-5 border border-green-100 dark:border-green-800">
+        <div className="flex justify-between items-center mb-2">
+          <span className="text-lg font-semibold text-green-800 dark:text-green-200">Steps</span>
+          <span className="text-lg font-bold text-green-600 dark:text-green-400">
+            {todaySteps > 0 ? todaySteps.toLocaleString() : '--'}
+            <span className="text-sm font-normal text-gray-500 dark:text-gray-400"> / {stepGoal.toLocaleString()}</span>
+          </span>
+        </div>
+        <div className="h-4 bg-green-200 dark:bg-green-800/50 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-green-500 transition-all duration-500 rounded-full"
+            style={{ width: `${getStepsPosition(todaySteps, stepGoal)}%` }}
+          />
+        </div>
+        <div className="flex justify-between items-center mt-2">
+          <span className="text-sm text-green-700 dark:text-green-300">
+            {todaySteps > 0 ? Math.round((todaySteps / stepGoal) * 100) : 0}%
+          </span>
+          <button 
+            onClick={() => setShowCheckin(true)}
+            className="text-sm text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-200"
+          >
+            {todaySteps > 0 ? 'Edit' : 'Add steps'}
+          </button>
+        </div>
+      </div>
+
+      <RaceProgress checkins={checkins} raceGoal={raceGoal} daysUntil={daysUntil} weeksUntil={weeksUntil} />
+      <TripWidget trips={trips} userId={userId} onRefresh={loadData} />
+
+      {/* Daily Progress Card */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Daily Progress</h2>
           <span className="text-2xl font-bold text-primary-600 dark:text-blue-400">
@@ -511,7 +652,7 @@ export default function Dashboard() {
         <MacroBar label="Carbs" current={totals.carbs} goal={goalsData.carbs} color="bg-amber-500" />
       </div>
 
-      {todayCheckin && (
+      {todayCheckins.length > 0 && (
         <div className="bg-purple-50 dark:bg-purple-900/20 rounded-2xl shadow-sm p-4 border border-purple-100 dark:border-purple-800">
           <div className="flex justify-between items-center mb-2">
             <span className="text-sm font-medium text-purple-700 dark:text-purple-300">Today's Check-in</span>
@@ -523,19 +664,16 @@ export default function Dashboard() {
             </button>
           </div>
           <div className="grid grid-cols-4 gap-2 text-xs">
-            {todayCheckin.weight && <div className="text-center"><span className="font-semibold">{todayCheckin.weight}</span> kg</div>}
-            {todayCheckin.ketones && <div className="text-center"><span className="font-semibold">{todayCheckin.ketones}</span> ketones</div>}
-            {todayCheckin.glucose && <div className="text-center"><span className="font-semibold">{todayCheckin.glucose}</span> glucose</div>}
-            {todayCheckin.heartRate && <div className="text-center"><span className="font-semibold">{todayCheckin.heartRate}</span> HR</div>}
-            {todayCheckin.bpHigh && todayCheckin.bpLow && (
-              <div className="text-center"><span className="font-semibold">{todayCheckin.bpHigh}/{todayCheckin.bpLow}</span> BP</div>
+            {todayCheckins[0]?.weight && <div className="text-center"><span className="font-semibold">{todayCheckins[0].weight}</span> kg</div>}
+            {todayCheckins[0]?.ketones && <div className="text-center"><span className="font-semibold">{todayCheckins[0].ketones}</span> ketones</div>}
+            {todayCheckins[0]?.glucose && <div className="text-center"><span className="font-semibold">{todayCheckins[0].glucose}</span> glucose</div>}
+            {todayCheckins[0]?.heartRate && <div className="text-center"><span className="font-semibold">{todayCheckins[0].heartRate}</span> HR</div>}
+            {todayCheckins[0]?.bpHigh && todayCheckins[0]?.bpLow && (
+              <div className="text-center"><span className="font-semibold">{todayCheckins[0].bpHigh}/{todayCheckins[0].bpLow}</span> BP</div>
             )}
-            {todayCheckin.steps && (
-              <div className="text-center"><span className="font-semibold">{todayCheckin.steps}</span> steps</div>
-            )}
-            {todayCheckin.saturation && <div className="text-center"><span className="font-semibold">{todayCheckin.saturation}</span> sat%</div>}
-            {todayCheckin.cholesterol && <div className="text-center"><span className="font-semibold">{todayCheckin.cholesterol}</span> chol</div>}
-            {todayCheckin.ferritin && <div className="text-center"><span className="font-semibold">{todayCheckin.ferritin}</span> ferr</div>}
+            {todayCheckins[0]?.saturation && <div className="text-center"><span className="font-semibold">{todayCheckins[0].saturation}</span> sat%</div>}
+            {todayCheckins[0]?.cholesterol && <div className="text-center"><span className="font-semibold">{todayCheckins[0].cholesterol}</span> chol</div>}
+            {todayCheckins[0]?.ferritin && <div className="text-center"><span className="font-semibold">{todayCheckins[0].ferritin}</span> ferr</div>}
           </div>
         </div>
       )}
@@ -547,14 +685,12 @@ export default function Dashboard() {
         >
           + Add Food
         </Link>
-        {!todayCheckin && (
-          <button
-            onClick={() => setShowCheckin(true)}
-            className="flex-1 py-3 bg-purple-500 text-white font-semibold rounded-xl shadow-sm hover:bg-purple-600 transition-colors"
-          >
-            Check-in
-          </button>
-        )}
+        <button
+          onClick={() => setShowCheckin(true)}
+          className="flex-1 py-3 bg-purple-500 text-white font-semibold rounded-xl shadow-sm hover:bg-purple-600 transition-colors"
+        >
+          Check-in
+        </button>
         <Link
           to="/presets"
           className="flex-1 py-3 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-semibold rounded-xl text-center hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
@@ -600,7 +736,7 @@ export default function Dashboard() {
                   <span className="text-amber-500 dark:text-amber-400">C:{Math.round(log.netCarbs && log.netCarbs > 0 ? log.netCarbs : log.carbs)}</span>
                 </div>
                 <div className="ml-3 p-2 text-primary-500 dark:text-blue-400">
-                  &#9998;
+                  ✏️
                 </div>
               </button>
             ))}

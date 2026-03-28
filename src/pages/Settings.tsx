@@ -1,7 +1,7 @@
 import { useState, useEffect, ReactNode } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { getGoals, updateGoals, getRaceGoal, saveRaceGoal, getDaysUntilRace, changePassword, logout } from '../lib/api';
+import { getGoals, updateGoals, getRaceGoal, saveRaceGoal, getDaysUntilRace, changePassword, logout, getStepGoal, saveStepGoal as saveStepGoalApi } from '../lib/api';
 
 const getVersionString = () => {
   const now = new Date();
@@ -77,6 +77,7 @@ export default function Settings() {
   const [raceWeeklyTarget, setRaceWeeklyTarget] = useState(0.5);
   const [raceSaved, setRaceSaved] = useState(false);
   const [daysUntilRace, setDaysUntilRace] = useState(57);
+  const [stepGoal, setStepGoal] = useState(10000);
 
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -140,9 +141,10 @@ export default function Settings() {
     if (!userId) return;
     setLoading(true);
     
-    const [stored, raceGoalData] = await Promise.all([
+    const [stored, raceGoalData, stepGoalData] = await Promise.all([
       getGoals(userId),
       getRaceGoal(userId),
+      getStepGoal(userId),
     ]);
     
     setCalories(stored.calories);
@@ -167,6 +169,7 @@ export default function Settings() {
     setRaceWeeklyTarget(raceGoalData.weeklyTarget);
     setEventName(raceGoalData.eventName || '');
     setDaysUntilRace(await getDaysUntilRace(userId));
+    setStepGoal(stepGoalData);
     setLoading(false);
   };
 
@@ -188,7 +191,10 @@ export default function Settings() {
 
   const handleSave = async () => {
     if (!userId) return;
-    await updateGoals(userId, { calories, protein, carbs, fat, weight, height, targetBmi });
+    await Promise.all([
+      updateGoals(userId, { calories, protein, carbs, fat, weight, height, targetBmi }),
+      saveStepGoalApi(userId, stepGoal),
+    ]);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -328,7 +334,7 @@ export default function Settings() {
       {/* Daily Goals */}
       <CollapsibleSection title="Daily Goals" icon="🎯" defaultExpanded={true}>
         <div className="flex justify-between items-center mb-4">
-          <span className="text-sm text-gray-500 dark:text-gray-400">Set your macros</span>
+          <span className="text-sm text-gray-500 dark:text-gray-400">Set your macros & steps</span>
           <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
             <button
               onClick={() => setMode('percent')}
@@ -345,16 +351,29 @@ export default function Settings() {
           </div>
         </div>
         
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
-            Daily Calories
-          </label>
-          <input
-            type="number"
-            value={calories}
-            onChange={(e) => setCalories(Number(e.target.value))}
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-lg"
-          />
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
+              Daily Calories
+            </label>
+            <input
+              type="number"
+              value={calories}
+              onChange={(e) => setCalories(Number(e.target.value))}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-lg"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-green-600 dark:text-green-400 mb-2">
+              Daily Steps
+            </label>
+            <input
+              type="number"
+              value={stepGoal}
+              onChange={(e) => setStepGoal(Number(e.target.value))}
+              className="w-full px-4 py-3 rounded-xl border border-green-200 dark:border-green-700 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 outline-none text-lg"
+            />
+          </div>
         </div>
         
         {mode === 'percent' ? (
