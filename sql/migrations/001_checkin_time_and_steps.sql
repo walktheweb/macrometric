@@ -24,6 +24,12 @@ CREATE TABLE IF NOT EXISTS step_goals (
 -- 5. Create index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_step_goals_user_id ON step_goals(user_id);
 
+-- 6. Add food_id column to food_logs for linking
+ALTER TABLE food_logs ADD COLUMN IF NOT EXISTS food_id TEXT;
+
+-- 7. Create index for faster lookups
+CREATE INDEX IF NOT EXISTS idx_food_logs_food_id ON food_logs(food_id);
+
 -- ================================================
 -- Optional: Rename race_goals to event_goals
 -- (This is optional - race_goals still works)

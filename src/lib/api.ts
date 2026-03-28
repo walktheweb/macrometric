@@ -17,6 +17,7 @@ export interface Food {
 
 export interface FoodLog extends Food {
   id: string;
+  foodId?: string;
   quantity?: number;
   baseMacros?: {
     calories: number;
@@ -154,6 +155,7 @@ export async function getLogs(userId: string, date?: string): Promise<DayLog> {
   const filtered = logs.map(log => ({
     ...log,
     id: log.id,
+    foodId: log.food_id || undefined,
     name: log.name || '',
     brand: log.brand || null,
     calories: log.calories || 0,
@@ -183,6 +185,7 @@ export async function addLog(userId: string, food: Partial<FoodLog>): Promise<Fo
   const newLog = {
     id: generateId(),
     user_id: userId,
+    food_id: food.id || null,
     name: food.name || '',
     brand: food.brand || null,
     calories: food.calories || 0,
@@ -207,6 +210,7 @@ export async function addLog(userId: string, food: Partial<FoodLog>): Promise<Fo
   
   return {
     ...newLog,
+    foodId: newLog.food_id,
     createdAt: newLog.created_at,
   } as FoodLog;
 }
@@ -516,6 +520,79 @@ export async function updateMyFood(userId: string, food: Food): Promise<Food | n
   }
   
   return food;
+}
+
+export async function updateMyFoodAndLogs(
+  userId: string,
+  food: Food
+): Promise<{ food: Food; updatedLogs: number }> {
+  const dbFood = {
+    name: food.name,
+    brand: food.brand,
+    calories: food.calories,
+    protein: food.protein,
+    carbs: food.carbs,
+    fat: food.fat,
+    serving: food.serving,
+    serving_size: food.servingSize,
+    net_carbs: food.netCarbs,
+    package_weight: food.packageWeight,
+    package_count: food.packageCount,
+  };
+  
+  const { error: updateError } = await supabase
+    .from('my_foods')
+    .update(dbFood)
+    .eq('id', food.id)
+    .eq('user_id', userId);
+  
+  if (updateError) {
+    console.error('Error updating my food:', updateError);
+    return { food, updatedLogs: 0 };
+  }
+  
+  const { data: logs, error: fetchError } = await supabase
+    .from('food_logs')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('food_id', food.id);
+  
+  if (fetchError) {
+    console.error('Error fetching logs:', fetchError);
+    return { food, updatedLogs: 0 };
+  }
+  
+  if (!logs || logs.length === 0) {
+    return { food, updatedLogs: 0 };
+  }
+  
+  const updates = logs.map(log => {
+    const ratio = log.quantity || 1;
+    return {
+      id: log.id,
+      name: food.name,
+      brand: food.brand,
+      calories: Math.round(food.calories * ratio * 10) / 10,
+      protein: Math.round(food.protein * ratio * 10) / 10,
+      carbs: Math.round(food.carbs * ratio * 10) / 10,
+      fat: Math.round(food.fat * ratio * 10) / 10,
+      serving: food.serving,
+      serving_size: food.servingSize,
+      net_carbs: food.netCarbs,
+      package_weight: food.packageWeight,
+      package_count: food.packageCount,
+    };
+  });
+  
+  const { error: updateLogsError } = await supabase
+    .from('food_logs')
+    .upsert(updates);
+  
+  if (updateLogsError) {
+    console.error('Error updating logs:', updateLogsError);
+  }
+  
+  return { food, updatedLogs: logs.length };
 }
 
 export async function deleteMyFood(userId: string, id: string): Promise<void> {

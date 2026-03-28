@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { getMyFoods, addMyFood, updateMyFood, deleteMyFood, addLog, Food } from '../lib/api';
+import { getMyFoods, addMyFood, deleteMyFood, addLog, updateMyFoodAndLogs, Food } from '../lib/api';
 
 export default function MyFoods() {
   const navigate = useNavigate();
@@ -78,13 +78,17 @@ export default function MyFoods() {
     }
 
     if (editingFood) {
-      await updateMyFood(userId, formData);
+      const result = await updateMyFoodAndLogs(userId, formData);
+      if (result.updatedLogs > 0) {
+        alert(`Saved! Updated ${result.updatedLogs} past entry(s).`);
+      }
     } else {
       await addMyFood(userId, formData);
     }
     
     await loadFoods();
     setShowForm(false);
+    navigate('/');
   };
 
   const handleDelete = async (id: string) => {
