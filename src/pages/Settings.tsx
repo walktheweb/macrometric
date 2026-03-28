@@ -1,7 +1,7 @@
-import { useState, useEffect, ReactNode } from 'react';
+import { useState, useEffect, ReactNode, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { getGoals, updateGoals, getRaceGoal, saveRaceGoal, getDaysUntilRace, changePassword, logout, getStepGoal, saveStepGoal as saveStepGoalApi } from '../lib/api';
+import { getGoals, updateGoals, getRaceGoal, saveRaceGoal, getDaysUntilRace, changePassword, logout, getStepGoal, saveStepGoal as saveStepGoalApi, exportUserData, importUserData } from '../lib/api';
 
 const getVersionString = () => {
   const now = new Date();
@@ -100,6 +100,10 @@ export default function Settings() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [newReleaseNote, setNewReleaseNote] = useState('');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [backupStatus, setBackupStatus] = useState('');
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [selectedImportFile, setSelectedImportFile] = useState<File | null>(null);
 
   useEffect(() => {
     if (userId) {
@@ -317,6 +321,53 @@ export default function Settings() {
   const deleteFeatureRequest = (id: string) => {
     const updated = featureRequests.filter(f => f.id !== id);
     setFeatureRequests(updated);
+  };
+
+  const handleExportData = async () => {
+    if (!userId) return;
+    setBackupBusy(true);
+    setBackupStatus('');
+    try {
+      const payload = await exportUserData(userId);
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const datePart = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `macrometric-backup-${datePart}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setBackupStatus('Export completed.');
+    } catch (error) {
+      console.error(error);
+      setBackupStatus('Export failed.');
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const handleImportData = async () => {
+    if (!userId || !selectedImportFile) return;
+    setBackupBusy(true);
+    setBackupStatus('');
+    try {
+      const text = await selectedImportFile.text();
+      const parsed = JSON.parse(text);
+      const result = await importUserData(userId, parsed);
+      setBackupStatus(`Import completed. ${result.imported} row(s) processed.`);
+      setSelectedImportFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      await loadData();
+    } catch (error) {
+      console.error(error);
+      setBackupStatus('Import failed. Check file format.');
+    } finally {
+      setBackupBusy(false);
+    }
   };
 
   const targetWeight = calculateTargetWeight();
@@ -638,6 +689,54 @@ export default function Settings() {
               {t === 'system' ? '💻' : t === 'light' ? '☀️' : '🌙'} {t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
+        </div>
+      </CollapsibleSection>
+
+      {/* Data Backup */}
+      <CollapsibleSection title="Data Backup" icon="💾">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Export your data to JSON for backup, or import a previous backup.
+          </p>
+
+          <button
+            onClick={handleExportData}
+            disabled={backupBusy}
+            className={`w-full py-3 font-semibold rounded-xl transition-colors ${
+              backupBusy
+                ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                : 'bg-green-600 text-white hover:bg-green-700'
+            }`}
+          >
+            Export Data (JSON)
+          </button>
+
+          <div className="space-y-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={(e) => setSelectedImportFile(e.target.files?.[0] || null)}
+              className="block w-full text-sm text-gray-700 dark:text-gray-200 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-200"
+            />
+            <button
+              onClick={handleImportData}
+              disabled={backupBusy || !selectedImportFile}
+              className={`w-full py-3 font-semibold rounded-xl transition-colors ${
+                backupBusy || !selectedImportFile
+                  ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
+            >
+              Import Data (JSON)
+            </button>
+          </div>
+
+          {backupStatus && (
+            <div className="text-sm text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 rounded-lg px-3 py-2">
+              {backupStatus}
+            </div>
+          )}
         </div>
       </CollapsibleSection>
 

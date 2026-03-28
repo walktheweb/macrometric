@@ -48,6 +48,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [editingLog, setEditingLog] = useState<FoodLog | null>(null);
   const [editQuantity, setEditQuantity] = useState(1);
+  const [editQuantityInput, setEditQuantityInput] = useState('1');
   const [editQuantityType, setEditQuantityType] = useState<'number' | 'grams'>('number');
   const [showCheckin, setShowCheckin] = useState(false);
   const [editingCheckin, setEditingCheckin] = useState<Checkin | null>(null);
@@ -86,6 +87,25 @@ export default function Dashboard() {
       loadData();
     }
   }, [userId]);
+
+  useEffect(() => {
+    const handleTodayNav = () => {
+      setEditingLog(null);
+      setShowCheckin(false);
+      setEditingCheckin(null);
+    };
+
+    window.addEventListener('macrometric:today-nav', handleTodayNav);
+    return () => {
+      window.removeEventListener('macrometric:today-nav', handleTodayNav);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (editingLog || showCheckin) {
+      window.dispatchEvent(new Event('macrometric:focus-first-input'));
+    }
+  }, [editingLog, showCheckin]);
 
   const loadData = async () => {
     if (!userId) return;
@@ -164,11 +184,16 @@ export default function Dashboard() {
   const openEdit = (log: FoodLog) => {
     setEditingLog(log);
     setEditQuantity(log.quantity || 1);
-    setEditQuantityType(log.serving?.endsWith('g') ? 'grams' : 'number');
+    setEditQuantityInput((log.quantity || 1).toString());
+    setEditQuantityType('grams');
   };
 
   const saveEdit = async () => {
     if (!editingLog || !userId) return;
+
+    const parsed = Number(editQuantityInput);
+    const safeQuantity = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+    const quantityToSave = editQuantityType === 'grams' ? safeQuantity : Math.max(1, Math.floor(safeQuantity));
     
     const baseMacros = editingLog.baseMacros || {
       calories: editingLog.calories / (editingLog.quantity || 1),
@@ -177,22 +202,24 @@ export default function Dashboard() {
       fat: editingLog.fat / (editingLog.quantity || 1),
     };
     
-    let multiplier = editQuantity;
+    let multiplier = quantityToSave;
     if (editQuantityType === 'grams') {
-      multiplier = editQuantity / 100;
+      multiplier = quantityToSave / 100;
     }
     
     const updatedLog = {
       ...editingLog,
-      quantity: editQuantity,
+      quantity: quantityToSave,
       baseMacros,
       calories: Math.round(baseMacros.calories * multiplier * 10) / 10,
       protein: Math.round(baseMacros.protein * multiplier * 10) / 10,
       carbs: Math.round(baseMacros.carbs * multiplier * 10) / 10,
       fat: Math.round(baseMacros.fat * multiplier * 10) / 10,
-      serving: editQuantityType === 'grams' ? `${editQuantity}g` : `${editQuantity}`,
+      serving: editQuantityType === 'grams' ? `${quantityToSave}g` : `${quantityToSave}`,
     };
     
+    setEditQuantity(quantityToSave);
+    setEditQuantityInput(quantityToSave.toString());
     await updateLog(userId, editingLog.id, updatedLog);
     setEditingLog(null);
     loadData();
@@ -269,7 +296,11 @@ export default function Dashboard() {
       carbs: editingLog.carbs / (editingLog.quantity || 1),
       fat: editingLog.fat / (editingLog.quantity || 1),
     };
-    const multiplier = editQuantityType === 'grams' ? editQuantity / 100 : editQuantity;
+    const parsedPreview = Number(editQuantityInput);
+    const previewQuantity = Number.isFinite(parsedPreview) && parsedPreview > 0
+      ? (editQuantityType === 'grams' ? parsedPreview : Math.max(1, Math.floor(parsedPreview)))
+      : editQuantity;
+    const multiplier = editQuantityType === 'grams' ? previewQuantity / 100 : previewQuantity;
     const calcCals = Math.round(baseMacros.calories * multiplier);
     const calcProtein = Math.round(baseMacros.protein * multiplier);
     const calcCarbs = Math.round(baseMacros.carbs * multiplier);
@@ -317,8 +348,15 @@ export default function Dashboard() {
               <input
                 type="number"
                 autoFocus
-                value={editQuantity}
-                onChange={(e) => setEditQuantity(editQuantityType === 'grams' ? Math.max(1, Number(e.target.value)) : Math.max(1, Math.floor(Number(e.target.value))))}
+                value={editQuantityInput}
+                onChange={(e) => setEditQuantityInput(e.target.value)}
+                onBlur={() => {
+                  const parsed = Number(editQuantityInput);
+                  const safe = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+                  const normalized = editQuantityType === 'grams' ? safe : Math.max(1, Math.floor(safe));
+                  setEditQuantity(normalized);
+                  setEditQuantityInput(normalized.toString());
+                }}
                 min={1}
                 step={editQuantityType === 'grams' ? 10 : 1}
                 className="flex-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-lg text-center"

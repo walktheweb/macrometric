@@ -1,0 +1,111 @@
+﻿{
+  "version": 1,
+  "type": "my_foods_selection",
+  "exportedAt": "2026-03-28T00:00:00.000Z",
+  "foods": [
+    {
+      "name": "Mini Bounty",
+      "calories": 487,
+      "fat": 26,
+      "protein": 3.8,
+      "carbs": 59,
+      "netCarbs": 48,
+      "servingSize": 100,
+      "serving": "100g",
+      "brand": "Bounty",
+      "packageWeight": 227,
+      "packageCount": 7
+    },
+    {
+      "name": "Maatjes Haring",
+      "calories": 167,
+      "fat": 11,
+      "protein": 17,
+      "carbs": 0,
+      "netCarbs": 0,
+      "servingSize": 100,
+      "serving": "100g",
+      "brand": "Dirk",
+      "packageWeight": 0,
+      "packageCount": 5
+    },
+    {
+      "name": "Sardine in zonnebloemolie",
+      "calories": 216,
+      "fat": 13,
+      "protein": 24,
+      "carbs": 0.6,
+      "netCarbs": 0.5,
+      "servingSize": 100,
+      "serving": "100g",
+      "brand": "Dirk La Miranda Sardinella in zonnebloemolie",
+      "packageWeight": 0,
+      "packageCount": 0
+    },
+    {
+      "name": "Pistachio Nut Mix Salted",
+      "calories": 606,
+      "fat": 48.4,
+      "protein": 23.2,
+      "carbs": 15.7,
+      "netCarbs": 5.7,
+      "servingSize": 100,
+      "serving": "100g",
+      "brand": "Action Snacks of the World",
+      "packageWeight": 200,
+      "packageCount": 0
+    },
+    {
+      "name": "Slagroom 35% vet",
+      "calories": 337,
+      "fat": 35,
+      "protein": 2.5,
+      "carbs": 3,
+      "netCarbs": 3,
+      "servingSize": 100,
+      "serving": "100ml",
+      "brand": "Dirk Melkan",
+      "packageWeight": 500,
+      "packageCount": 0
+    },
+    {
+      "name": "Heel Ei",
+      "calories": 74,
+      "fat": 5,
+      "protein": 7,
+      "carbs": 0,
+      "netCarbs": 0,
+      "servingSize": 1,
+      "serving": "1ei",
+      "brand": null,
+      "packageWeight": 0,
+      "packageCount": 0
+    },
+    {
+      "name": "Belegen kaas",
+      "calories": 385,
+      "fat": 32,
+      "protein": 24,
+      "carbs": 0,
+      "netCarbs": 0,
+      "servingSize": 100,
+      "serving": "100g",
+      "brand": null,
+      "packageWeight": 0,
+      "packageCount": 0
+    },
+    {
+      "name": "Zure Haring",
+      "calories": 160,
+      "fat": 11,
+      "protein": 15,
+      "carbs": 0.5,
+      "netCarbs": 0.5,
+      "servingSize": 100,
+      "serving": "100g",
+      "brand": "Dirk Zeelandia",
+      "packageWeight": 0,
+      "packageCount": 0
+    }
+  ]
+}

@@ -15,7 +15,8 @@ export default function FoodLog() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedFood, setSelectedFood] = useState<Food | null>(null);
   const [quantity, setQuantity] = useState(1);
-  const [quantityType, setQuantityType] = useState<'number' | 'grams'>('number');
+  const [quantityInput, setQuantityInput] = useState('1');
+  const [quantityType, setQuantityType] = useState<'number' | 'grams'>('grams');
   const [showScanner, setShowScanner] = useState(false);
   const [showManualAdd, setShowManualAdd] = useState(false);
   const [showImportInput, setShowImportInput] = useState(false);
@@ -70,7 +71,8 @@ export default function FoodLog() {
       if (products.length > 0) {
         setSelectedFood(products[0]);
         setQuantity(1);
-        setQuantityType('number');
+        setQuantityInput('1');
+        setQuantityType('grams');
       } else {
         alert('Product not found. Try searching by name.');
       }
@@ -85,6 +87,8 @@ export default function FoodLog() {
 
   const handleAdd = async (food: Food) => {
     if (!userId) return;
+    const parsedQuantity = Number(quantityInput);
+    const safeQuantity = Number.isFinite(parsedQuantity) && parsedQuantity > 0 ? parsedQuantity : 1;
     let foodToLog = food;
     const isFromMyFoods = myFoods.some(f => f.id === food.id);
     if (!isFromMyFoods) {
@@ -109,9 +113,9 @@ export default function FoodLog() {
       fat: foodToLog.fat,
     };
 
-    let multiplier = quantity;
+    let multiplier = safeQuantity;
     if (quantityType === 'grams') {
-      multiplier = quantity / 100;
+      multiplier = safeQuantity / 100;
     }
     
     const loggedFood = {
@@ -120,8 +124,8 @@ export default function FoodLog() {
       protein: Math.round(foodToLog.protein * multiplier * 10) / 10,
       carbs: Math.round(displayCarbs * multiplier * 10) / 10,
       fat: Math.round(foodToLog.fat * multiplier * 10) / 10,
-      serving: quantityType === 'grams' ? `${quantity}g` : `${quantity}`,
-      quantity,
+      serving: quantityType === 'grams' ? `${safeQuantity}g` : `${safeQuantity}`,
+      quantity: safeQuantity,
       baseMacros,
     };
     
@@ -167,7 +171,10 @@ export default function FoodLog() {
       await updateMyFoodAndLogs(userId, { ...editingFood, ...manualFood, brand: brand || null });
       setEditingFood(null);
     } else {
-      await addMyFood(userId, { ...rest, brand: brand || null });
+      const savedFood = await addMyFood(userId, { ...rest, brand: brand || null });
+      await addLog(userId, { ...savedFood, quantity: 1 });
+      navigate('/');
+      return;
     }
     
     await search();
@@ -177,7 +184,8 @@ export default function FoodLog() {
   const selectFood = (food: Food) => {
     setSelectedFood(food);
     setQuantity(1);
-    setQuantityType('number');
+    setQuantityInput('1');
+    setQuantityType('grams');
   };
 
   const incompleteFoods = myFoods.filter(f => f.name.toLowerCase().startsWith('incomplete '));
@@ -278,6 +286,8 @@ export default function FoodLog() {
 
   if (selectedFood) {
     const displayServing = selectedFood.servingSize ? `${selectedFood.servingSize}g` : 'serving';
+    const parsedPreview = Number(quantityInput);
+    const previewQuantity = Number.isFinite(parsedPreview) && parsedPreview > 0 ? parsedPreview : quantity;
     
     return (
       <div className="space-y-4">
@@ -325,8 +335,14 @@ export default function FoodLog() {
               <input
                 type="number"
                 autoFocus
-                value={quantity}
-                onChange={(e) => setQuantity(Math.max(0.1, Number(e.target.value)))}
+                value={quantityInput}
+                onChange={(e) => setQuantityInput(e.target.value)}
+                onBlur={() => {
+                  const parsed = Number(quantityInput);
+                  const safe = Number.isFinite(parsed) && parsed > 0 ? parsed : 0.1;
+                  setQuantity(safe);
+                  setQuantityInput(safe.toString());
+                }}
                 min="0.1"
                 step={quantityType === 'grams' ? 10 : 0.5}
                 className="flex-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-lg text-center"
@@ -340,25 +356,25 @@ export default function FoodLog() {
           <div className="grid grid-cols-4 gap-3 mb-6">
             <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-xl">
               <div className="text-lg font-bold text-gray-900 dark:text-white">
-                {Math.round(selectedFood.calories * (quantityType === 'grams' ? quantity / 100 : quantity))}
+                {Math.round(selectedFood.calories * (quantityType === 'grams' ? previewQuantity / 100 : previewQuantity))}
               </div>
               <div className="text-xs text-gray-500 dark:text-gray-400">kcal</div>
             </div>
             <div className="text-center p-3 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
               <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                {Math.round(selectedFood.fat * (quantityType === 'grams' ? quantity / 100 : quantity))}g
+                {Math.round(selectedFood.fat * (quantityType === 'grams' ? previewQuantity / 100 : previewQuantity))}g
               </div>
               <div className="text-xs text-gray-500 dark:text-gray-400">Fat</div>
             </div>
             <div className="text-center p-3 bg-red-50 dark:bg-red-900/30 rounded-xl">
               <div className="text-lg font-bold text-red-600 dark:text-red-400">
-                {Math.round(selectedFood.protein * (quantityType === 'grams' ? quantity / 100 : quantity))}g
+                {Math.round(selectedFood.protein * (quantityType === 'grams' ? previewQuantity / 100 : previewQuantity))}g
               </div>
               <div className="text-xs text-gray-500 dark:text-gray-400">Protein</div>
             </div>
             <div className="text-center p-3 bg-amber-50 dark:bg-amber-900/30 rounded-xl">
               <div className="text-lg font-bold text-amber-600 dark:text-amber-400">
-                {Math.round(getDisplayCarbs(selectedFood) * (quantityType === 'grams' ? quantity / 100 : quantity))}g
+                {Math.round(getDisplayCarbs(selectedFood) * (quantityType === 'grams' ? previewQuantity / 100 : previewQuantity))}g
               </div>
               <div className="text-xs text-gray-500 dark:text-gray-400">Carbs</div>
             </div>
@@ -444,6 +460,16 @@ export default function FoodLog() {
                   value={manualFood.name}
                   onChange={(e) => setManualFood({ ...manualFood, name: e.target.value })}
                   placeholder="e.g. Raw Egg"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Brand (optional)</label>
+                <input
+                  type="text"
+                  value={manualFood.brand || ''}
+                  onChange={(e) => setManualFood({ ...manualFood, brand: e.target.value || null })}
+                  placeholder="e.g. Digros La Miranda Sardinella in zonnebloemolie"
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-sm"
                 />
               </div>
@@ -581,6 +607,12 @@ export default function FoodLog() {
           className="w-full mt-3 py-2 text-green-600 dark:text-green-400 font-medium text-sm hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors"
         >
           + Add to My Foods Database
+        </button>
+        <button
+          onClick={() => navigate('/my-foods')}
+          className="w-full mt-2 py-2 text-blue-600 dark:text-blue-400 font-medium text-sm hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+        >
+          Manage My Foods (Add / Edit / Delete)
         </button>
       </div>
       

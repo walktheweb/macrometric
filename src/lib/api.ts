@@ -119,6 +119,22 @@ export interface RaceGoal {
   weeklyTarget: number;
 }
 
+export interface DataExportV1 {
+  version: 1;
+  exportedAt: string;
+  userId: string;
+  data: {
+    my_foods: any[];
+    food_logs: any[];
+    presets: any[];
+    goals: any[];
+    checkins: any[];
+    step_goals: any[];
+    trips: any[];
+    race_goals: any[];
+  };
+}
+
 export function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
@@ -245,9 +261,22 @@ export async function deleteLog(userId: string, id: string): Promise<void> {
 }
 
 export async function updateLog(userId: string, id: string, updates: Partial<FoodLog>): Promise<FoodLog | null> {
-  const dbUpdates: any = { ...updates };
-  delete dbUpdates.id;
-  delete dbUpdates.baseMacros;
+  const dbUpdates: any = {};
+
+  if (updates.name !== undefined) dbUpdates.name = updates.name;
+  if (updates.brand !== undefined) dbUpdates.brand = updates.brand;
+  if (updates.calories !== undefined) dbUpdates.calories = updates.calories;
+  if (updates.protein !== undefined) dbUpdates.protein = updates.protein;
+  if (updates.carbs !== undefined) dbUpdates.carbs = updates.carbs;
+  if (updates.fat !== undefined) dbUpdates.fat = updates.fat;
+  if (updates.serving !== undefined) dbUpdates.serving = updates.serving;
+  if (updates.servingSize !== undefined) dbUpdates.serving_size = updates.servingSize;
+  if (updates.netCarbs !== undefined) dbUpdates.net_carbs = updates.netCarbs;
+  if (updates.packageWeight !== undefined) dbUpdates.package_weight = updates.packageWeight;
+  if (updates.packageCount !== undefined) dbUpdates.package_count = updates.packageCount;
+  if (updates.quantity !== undefined) dbUpdates.quantity = updates.quantity;
+  if (updates.foodId !== undefined) dbUpdates.food_id = updates.foodId;
+  if ((updates as any).date !== undefined) dbUpdates.date = (updates as any).date;
   
   const { data, error } = await supabase
     .from('food_logs')
@@ -1034,6 +1063,111 @@ export async function getDaysUntilRace(userId: string): Promise<number> {
 export async function getWeeksUntilRace(userId: string): Promise<number> {
   const days = await getDaysUntilRace(userId);
   return days / 7;
+}
+
+// Data backup
+export async function exportUserData(userId: string): Promise<DataExportV1> {
+  const [
+    myFoodsRes,
+    foodLogsRes,
+    presetsRes,
+    goalsRes,
+    checkinsRes,
+    stepGoalsRes,
+    tripsRes,
+    raceGoalsRes,
+  ] = await Promise.all([
+    supabase.from('my_foods').select('*').eq('user_id', userId),
+    supabase.from('food_logs').select('*').eq('user_id', userId),
+    supabase.from('presets').select('*').eq('user_id', userId),
+    supabase.from('goals').select('*').eq('user_id', userId),
+    supabase.from('checkins').select('*').eq('user_id', userId),
+    supabase.from('step_goals').select('*').eq('user_id', userId),
+    supabase.from('trips').select('*').eq('user_id', userId),
+    supabase.from('race_goals').select('*').eq('user_id', userId),
+  ]);
+
+  const errors = [
+    myFoodsRes.error,
+    foodLogsRes.error,
+    presetsRes.error,
+    goalsRes.error,
+    checkinsRes.error,
+    stepGoalsRes.error,
+    tripsRes.error,
+    raceGoalsRes.error,
+  ].filter(Boolean);
+
+  if (errors.length > 0) {
+    throw new Error('Failed to export one or more tables');
+  }
+
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    userId,
+    data: {
+      my_foods: myFoodsRes.data || [],
+      food_logs: foodLogsRes.data || [],
+      presets: presetsRes.data || [],
+      goals: goalsRes.data || [],
+      checkins: checkinsRes.data || [],
+      step_goals: stepGoalsRes.data || [],
+      trips: tripsRes.data || [],
+      race_goals: raceGoalsRes.data || [],
+    },
+  };
+}
+
+export async function importUserData(
+  userId: string,
+  payload: unknown
+): Promise<{ imported: number }> {
+  const input = payload as Partial<DataExportV1> | null;
+
+  if (!input || typeof input !== 'object' || !input.data || typeof input.data !== 'object') {
+    throw new Error('Invalid backup file format');
+  }
+
+  const data = input.data as DataExportV1['data'];
+  const toRows = (rows: any[] | undefined) => (rows || []).map((row: any) => ({ ...row, user_id: userId }));
+
+  const myFoods = toRows(data.my_foods);
+  const foodLogs = toRows(data.food_logs);
+  const presets = toRows(data.presets);
+  const goals = toRows(data.goals);
+  const checkins = toRows(data.checkins);
+  const stepGoals = toRows(data.step_goals);
+  const trips = toRows(data.trips);
+  const raceGoals = toRows(data.race_goals);
+
+  const results = await Promise.all([
+    myFoods.length ? supabase.from('my_foods').upsert(myFoods, { onConflict: 'id' }) : Promise.resolve({ error: null } as any),
+    foodLogs.length ? supabase.from('food_logs').upsert(foodLogs, { onConflict: 'id' }) : Promise.resolve({ error: null } as any),
+    presets.length ? supabase.from('presets').upsert(presets, { onConflict: 'id' }) : Promise.resolve({ error: null } as any),
+    goals.length ? supabase.from('goals').upsert(goals, { onConflict: 'user_id' }) : Promise.resolve({ error: null } as any),
+    checkins.length ? supabase.from('checkins').upsert(checkins, { onConflict: 'id' }) : Promise.resolve({ error: null } as any),
+    stepGoals.length ? supabase.from('step_goals').upsert(stepGoals, { onConflict: 'user_id' }) : Promise.resolve({ error: null } as any),
+    trips.length ? supabase.from('trips').upsert(trips, { onConflict: 'id' }) : Promise.resolve({ error: null } as any),
+    raceGoals.length ? supabase.from('race_goals').upsert(raceGoals, { onConflict: 'user_id' }) : Promise.resolve({ error: null } as any),
+  ]);
+
+  const hasErrors = results.some((res: any) => res.error);
+  if (hasErrors) {
+    throw new Error('Import failed for one or more tables');
+  }
+
+  return {
+    imported:
+      myFoods.length +
+      foodLogs.length +
+      presets.length +
+      goals.length +
+      checkins.length +
+      stepGoals.length +
+      trips.length +
+      raceGoals.length,
+  };
 }
 
 // Password / Authentication

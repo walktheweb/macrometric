@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 
 const navItems = [
@@ -11,6 +12,33 @@ const navItems = [
 export default function Layout() {
   const location = useLocation();
   const isAddPage = location.pathname === '/add';
+  const isMaintenancePage = location.pathname === '/my-foods';
+  const mainRef = useRef<HTMLElement | null>(null);
+
+  const focusFirstInput = () => {
+    if (!mainRef.current) return;
+    const selector = '[data-autofocus-first], input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), select:not([disabled])';
+    const candidates = Array.from(mainRef.current.querySelectorAll<HTMLElement>(selector));
+    const target = candidates.find((el) => el.offsetParent !== null);
+    if (target) {
+      target.focus();
+    }
+  };
+
+  useEffect(() => {
+    const id = window.setTimeout(focusFirstInput, 0);
+    return () => window.clearTimeout(id);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const handleFocusRequest = () => {
+      window.setTimeout(focusFirstInput, 0);
+    };
+    window.addEventListener('macrometric:focus-first-input', handleFocusRequest);
+    return () => {
+      window.removeEventListener('macrometric:focus-first-input', handleFocusRequest);
+    };
+  }, []);
   
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -25,7 +53,10 @@ export default function Layout() {
         </div>
       </header>
       
-      <main className="max-w-lg mx-auto px-4 py-4">
+      <main
+        ref={mainRef}
+        className={`${isMaintenancePage ? 'max-w-[1400px]' : 'max-w-lg'} mx-auto px-4 py-4`}
+      >
         <Outlet />
       </main>
       
@@ -35,6 +66,11 @@ export default function Layout() {
             <NavLink
               key={to}
               to={to}
+              onClick={() => {
+                if (to === '/' && location.pathname === '/') {
+                  window.dispatchEvent(new Event('macrometric:today-nav'));
+                }
+              }}
               className={({ isActive }) =>
                 `flex flex-col items-center py-1 px-3 rounded-lg transition-colors ${
                   isActive
