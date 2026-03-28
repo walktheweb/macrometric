@@ -1,17 +1,19 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { getTrips, saveTrip, deleteTrip, Trip } from '../lib/api';
+import { getTrips, saveTrip, updateTrip, deleteTrip, Trip } from '../lib/api';
 
 export default function Trips() {
   const { userId, loading: authLoading } = useAuth();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingTripId, setEditingTripId] = useState<string | null>(null);
   const [distance, setDistance] = useState('');
   const [hours, setHours] = useState('');
   const [minutes, setMinutes] = useState('');
   const [avgSpeed, setAvgSpeed] = useState('');
   const [avgHeartRate, setAvgHeartRate] = useState('');
+  const [description, setDescription] = useState('');
 
   useEffect(() => {
     if (userId) {
@@ -49,20 +51,42 @@ export default function Trips() {
     const duration = (parseInt(hours) || 0) * 60 + (parseInt(minutes) || 0);
     if (duration <= 0) return;
 
-    await saveTrip(userId, {
+    const payload = {
       distance: parseFloat(distance),
       duration,
       avgSpeed: parseFloat(avgSpeed) || 0,
       avgHeartRate: parseInt(avgHeartRate) || 0,
-    });
+      description: description.trim() || undefined,
+    };
+
+    if (editingTripId) {
+      await updateTrip(userId, editingTripId, payload);
+    } else {
+      await saveTrip(userId, payload);
+    }
 
     await loadTrips();
     setShowForm(false);
+    setEditingTripId(null);
     setDistance('');
     setHours('');
     setMinutes('');
     setAvgSpeed('');
     setAvgHeartRate('');
+    setDescription('');
+  };
+
+  const handleEdit = (trip: Trip) => {
+    setEditingTripId(trip.id);
+    setDistance(String(trip.distance || ''));
+    const h = Math.floor((trip.duration || 0) / 60);
+    const m = (trip.duration || 0) % 60;
+    setHours(h > 0 ? String(h) : '');
+    setMinutes(String(m));
+    setAvgSpeed(trip.avgSpeed ? String(trip.avgSpeed) : '');
+    setAvgHeartRate(trip.avgHeartRate ? String(trip.avgHeartRate) : '');
+    setDescription(trip.description || '');
+    setShowForm(true);
   };
 
   const handleDelete = async (id: string) => {
@@ -109,7 +133,19 @@ export default function Trips() {
             </div>
           </div>
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => {
+              const next = !showForm;
+              setShowForm(next);
+              if (!next) {
+                setEditingTripId(null);
+                setDistance('');
+                setHours('');
+                setMinutes('');
+                setAvgSpeed('');
+                setAvgHeartRate('');
+                setDescription('');
+              }
+            }}
             className="px-4 py-2 bg-green-500 text-white font-semibold rounded-xl hover:bg-green-600 transition-colors"
           >
             {showForm ? 'Cancel' : '+ Log Ride'}
@@ -119,7 +155,7 @@ export default function Trips() {
 
       {showForm && (
         <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-4">
-          <h3 className="font-semibold text-gray-800 dark:text-gray-100">Log New Ride</h3>
+          <h3 className="font-semibold text-gray-800 dark:text-gray-100">{editingTripId ? 'Edit Ride' : 'Log New Ride'}</h3>
           
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -158,6 +194,17 @@ export default function Trips() {
             </div>
           </div>
 
+          <div>
+            <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">Description</label>
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="e.g. Easy recovery ride / Intervals / Commute"
+              className="w-full px-4 py-3 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">Avg Speed (km/h)</label>
@@ -186,7 +233,7 @@ export default function Trips() {
             type="submit"
             className="w-full py-3 bg-green-500 text-white font-semibold rounded-xl hover:bg-green-600 transition-colors"
           >
-            Save Ride
+            {editingTripId ? 'Save Changes' : 'Save Ride'}
           </button>
         </form>
       )}
@@ -215,17 +262,30 @@ export default function Trips() {
                       <span className="text-gray-600 dark:text-gray-400">{formatDuration(trip.duration)}</span>
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleDelete(trip.id)}
-                    className="text-gray-400 hover:text-red-500 transition-colors"
-                  >
-                    ✕
-                  </button>
+                                    <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleEdit(trip)}
+                      className="text-sm text-blue-500 hover:text-blue-600 transition-colors"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(trip.id)}
+                      className="text-gray-400 hover:text-red-500 transition-colors"
+                    >
+                      ?
+                    </button>
+                  </div>
                 </div>
                 <div className="flex gap-4 mt-2 text-sm text-gray-500 dark:text-gray-400">
                   {trip.avgSpeed > 0 && <span>{trip.avgSpeed} km/h</span>}
                   {trip.avgHeartRate > 0 && <span>{trip.avgHeartRate} bpm</span>}
                 </div>
+                {trip.description && (
+                  <div className="mt-2 text-sm text-gray-700 dark:text-gray-300">
+                    {trip.description}
+                  </div>
+                )}
               </div>
             ))}
           </div>

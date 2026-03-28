@@ -109,6 +109,7 @@ export interface Trip {
   duration: number;
   avgSpeed: number;
   avgHeartRate: number;
+  description?: string;
   createdAt: number;
 }
 
@@ -936,6 +937,7 @@ export async function getTrips(userId: string): Promise<Trip[]> {
     duration: t.duration,
     avgSpeed: t.avg_speed,
     avgHeartRate: t.avg_heart_rate,
+    description: t.description,
     createdAt: t.created_at,
   }));
 }
@@ -960,6 +962,7 @@ export async function getTripsByDateRange(userId: string, startDate: string, end
     duration: t.duration,
     avgSpeed: t.avg_speed,
     avgHeartRate: t.avg_heart_rate,
+    description: t.description,
     createdAt: t.created_at,
   }));
 }
@@ -983,11 +986,20 @@ export async function saveTrip(userId: string, data: Omit<Trip, 'id' | 'date' | 
     duration: data.duration,
     avg_speed: data.avgSpeed,
     avg_heart_rate: data.avgHeartRate,
+    description: data.description || null,
     created_at: Date.now(),
   };
   
-  const { error } = await supabase.from('trips').insert(trip);
-  
+  let { error } = await supabase.from('trips').insert(trip);
+
+  // Backward-compatible fallback for databases where the description column
+  // has not been added yet.
+  if (error && String((error as any)?.message || '').toLowerCase().includes('description')) {
+    const { description, ...tripWithoutDescription } = trip as any;
+    const retry = await supabase.from('trips').insert(tripWithoutDescription);
+    error = retry.error;
+  }
+
   if (error) {
     console.error('Error saving trip:', error);
   }
@@ -998,6 +1010,42 @@ export async function saveTrip(userId: string, data: Omit<Trip, 'id' | 'date' | 
     avgSpeed: trip.avg_speed,
     avgHeartRate: trip.avg_heart_rate,
   };
+}
+
+export async function updateTrip(
+  userId: string,
+  id: string,
+  data: Omit<Trip, 'id' | 'date' | 'createdAt'>
+): Promise<void> {
+  const updates: any = {
+    distance: data.distance,
+    duration: data.duration,
+    avg_speed: data.avgSpeed,
+    avg_heart_rate: data.avgHeartRate,
+    description: data.description || null,
+  };
+
+  let { error } = await supabase
+    .from('trips')
+    .update(updates)
+    .eq('id', id)
+    .eq('user_id', userId);
+
+  // Backward-compatible fallback for databases where the description column
+  // has not been added yet.
+  if (error && String((error as any)?.message || '').toLowerCase().includes('description')) {
+    const { description, ...updatesWithoutDescription } = updates;
+    const retry = await supabase
+      .from('trips')
+      .update(updatesWithoutDescription)
+      .eq('id', id)
+      .eq('user_id', userId);
+    error = retry.error;
+  }
+
+  if (error) {
+    console.error('Error updating trip:', error);
+  }
 }
 
 export async function deleteTrip(userId: string, id: string): Promise<void> {

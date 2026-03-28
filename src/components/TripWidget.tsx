@@ -94,6 +94,11 @@ export default function TripWidget({ trips }: TripWidgetProps) {
               <span className="opacity-80 ml-2">{recentTrip.avgHeartRate} bpm</span>
             </div>
           </div>
+          {recentTrip.description && (
+            <div className="mt-2 text-sm opacity-90">
+              {recentTrip.description}
+            </div>
+          )}
         </div>
       )}
 
