@@ -230,7 +230,6 @@ export default function MyFoods() {
   const handleQuickLog = async (food: Food) => {
     if (!userId) return;
     await addLog(userId, { ...food, quantity: 1 });
-    navigate('/');
   };
 
   const handleImportAndFill = () => {
@@ -523,12 +522,6 @@ export default function MyFoods() {
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-3 mb-4 flex flex-wrap gap-2 items-center">
-        <button
-          onClick={toggleSelectAllFiltered}
-          className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600"
-        >
-          {allFilteredSelected ? 'Unselect All' : 'Select All'}
-        </button>
         <button
           onClick={handleExportSelected}
           disabled={selectedIds.size === 0}

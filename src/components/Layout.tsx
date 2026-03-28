@@ -12,7 +12,7 @@ const navItems = [
 export default function Layout() {
   const location = useLocation();
   const isAddPage = location.pathname === '/add';
-  const isMaintenancePage = location.pathname === '/my-foods';
+  const isMaintenancePage = location.pathname === '/my-foods' || location.pathname === '/food-entries';
   const mainRef = useRef<HTMLElement | null>(null);
 
   const focusFirstInput = () => {

@@ -9,6 +9,7 @@ import History from './pages/History';
 import Presets from './pages/Presets';
 import Settings from './pages/Settings';
 import MyFoods from './pages/MyFoods';
+import FoodEntries from './pages/FoodEntries';
 import Trips from './pages/Trips';
 import Layout from './components/Layout';
 import LoginScreen from './pages/LoginScreen';
@@ -69,6 +70,7 @@ export default function App() {
               <Route index element={<Dashboard />} />
               <Route path="add" element={<FoodLog />} />
               <Route path="my-foods" element={<MyFoods />} />
+              <Route path="food-entries" element={<FoodEntries />} />
               <Route path="presets" element={<Presets />} />
               <Route path="trips" element={<Trips />} />
               <Route path="history" element={<History />} />

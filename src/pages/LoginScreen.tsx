@@ -8,7 +8,7 @@ const getVersionString = () => {
   const yyyy = now.getFullYear();
   const HH = String(now.getHours()).padStart(2, '0');
   const MM = String(now.getMinutes()).padStart(2, '0');
-  return `2.0.002.${dd}${mm}${yyyy}${HH}${MM}`;
+  return `2.0.003.${dd}${mm}${yyyy}${HH}${MM}`;
 };
 
 export default function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {

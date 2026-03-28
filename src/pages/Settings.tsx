@@ -1,4 +1,5 @@
 import { useState, useEffect, ReactNode, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getGoals, updateGoals, getRaceGoal, saveRaceGoal, getDaysUntilRace, changePassword, logout, getStepGoal, saveStepGoal as saveStepGoalApi, exportUserData, importUserData } from '../lib/api';
@@ -10,7 +11,7 @@ const getVersionString = () => {
   const yyyy = now.getFullYear();
   const HH = String(now.getHours()).padStart(2, '0');
   const MM = String(now.getMinutes()).padStart(2, '0');
-  return `2.0.002.${dd}${mm}${yyyy}${HH}${MM}`;
+  return `2.0.003.${dd}${mm}${yyyy}${HH}${MM}`;
 };
 
 interface CollapsibleSectionProps {
@@ -54,6 +55,7 @@ function CollapsibleSection({ title, icon, defaultExpanded = false, gradient = f
 }
 
 export default function Settings() {
+  const navigate = useNavigate();
   const { userId } = useAuth();
   const { theme, setTheme } = useTheme();
   const [calories, setCalories] = useState(1500);
@@ -737,6 +739,27 @@ export default function Settings() {
               {backupStatus}
             </div>
           )}
+        </div>
+      </CollapsibleSection>
+
+      {/* Maintenance */}
+      <CollapsibleSection title="Maintenance" icon="🛠️">
+        <div className="space-y-3">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Open the maintenance view for bulk search/review/edit/delete on My Foods.
+          </p>
+          <button
+            onClick={() => navigate('/my-foods')}
+            className="w-full py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors"
+          >
+            Open My Foods Manager
+          </button>
+          <button
+            onClick={() => navigate('/food-entries')}
+            className="w-full py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
+          >
+            Open Food Entries Manager
+          </button>
         </div>
       </CollapsibleSection>
 
