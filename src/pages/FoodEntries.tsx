@@ -1,32 +1,112 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { addLog, deleteLog, FoodLog, getLogs, getToday, updateLog } from '../lib/api';
 
 type EditableField = 'name' | 'brand' | 'calories' | 'protein' | 'carbs' | 'fat' | 'serving' | 'quantity';
+type SortKey = 'name' | 'brand' | 'quantity' | 'serving' | 'calories' | 'protein' | 'carbs' | 'fat' | 'foodId';
 
 export default function FoodEntries() {
   const { userId, loading: authLoading } = useAuth();
-  const [date, setDate] = useState(getToday());
+  const [searchParams, setSearchParams] = useSearchParams();
+  const today = getToday();
+  const queryDate = searchParams.get('date');
+  const isValidDate = (value: string | null): value is string => !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const date = isValidDate(queryDate) ? queryDate : today;
   const [logs, setLogs] = useState<FoodLog[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [inlineEdit, setInlineEdit] = useState<{ id: string; field: EditableField } | null>(null);
   const [inlineValue, setInlineValue] = useState('');
   const [busy, setBusy] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const allSelected = logs.length > 0 && logs.every(l => selectedIds.has(l.id));
+  const firstLoadRef = useRef(true);
+
+  useEffect(() => {
+    if (isValidDate(queryDate)) return;
+    const next = new URLSearchParams(searchParams);
+    next.set('date', today);
+    setSearchParams(next, { replace: true });
+  }, [queryDate, searchParams, setSearchParams, today]);
+
+  const sortedLogs = useMemo(() => {
+    const rows = [...logs];
+    const getValue = (log: FoodLog): string | number => {
+      switch (sortKey) {
+        case 'brand':
+          return log.brand || '';
+        case 'quantity':
+        case 'calories':
+        case 'protein':
+        case 'carbs':
+        case 'fat':
+          return Number((log as any)[sortKey]) || 0;
+        case 'foodId':
+          return log.foodId || '';
+        default:
+          return String((log as any)[sortKey] || '').toLowerCase();
+      }
+    };
+
+    rows.sort((a, b) => {
+      const av = getValue(a);
+      const bv = getValue(b);
+      if (typeof av === 'number' && typeof bv === 'number') {
+        return sortDir === 'asc' ? av - bv : bv - av;
+      }
+      const cmp = String(av).localeCompare(String(bv), undefined, { sensitivity: 'base' });
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return rows;
+  }, [logs, sortKey, sortDir]);
+
+  const allSelected = sortedLogs.length > 0 && sortedLogs.every(l => selectedIds.has(l.id));
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(prev => (prev === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortKey(key);
+    setSortDir('asc');
+  };
+
+  const sortIndicator = (key: SortKey) => (sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '');
 
   const loadData = async () => {
     if (!userId) return;
-    setLoading(true);
+    if (firstLoadRef.current) setLoading(true);
     const day = await getLogs(userId, date);
     setLogs(day.logs);
+    firstLoadRef.current = false;
     setLoading(false);
   };
 
   useEffect(() => {
+    firstLoadRef.current = true;
+  }, [userId]);
+
+  useEffect(() => {
     if (userId) loadData();
   }, [userId, date]);
+
+  useEffect(() => {
+    // New date => clear row selection/edit state to avoid stale selected count.
+    setSelectedIds(new Set());
+    setInlineEdit(null);
+    setInlineValue('');
+  }, [date]);
+
+  useEffect(() => {
+    // Keep selected ids aligned with currently loaded rows.
+    setSelectedIds(prev => {
+      const currentIds = new Set(logs.map(l => l.id));
+      const next = new Set(Array.from(prev).filter(id => currentIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [logs]);
 
   const startInlineEdit = (log: FoodLog, field: EditableField) => {
     setInlineEdit({ id: log.id, field });
@@ -108,7 +188,7 @@ export default function FoodEntries() {
   const toggleSelectAll = () => {
     setSelectedIds(prev => {
       if (allSelected) return new Set();
-      return new Set(logs.map(l => l.id));
+      return new Set(sortedLogs.map(l => l.id));
     });
   };
 
@@ -197,7 +277,11 @@ export default function FoodEntries() {
             data-autofocus-first
             type="date"
             value={date}
-            onChange={(e) => setDate(e.target.value)}
+            onChange={(e) => {
+              const next = new URLSearchParams(searchParams);
+              next.set('date', e.target.value);
+              setSearchParams(next, { replace: true });
+            }}
             className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
           />
           <span className="text-sm text-gray-500 dark:text-gray-400">{logs.length} entries</span>
@@ -232,7 +316,7 @@ export default function FoodEntries() {
         </div>
       </div>
 
-      {logs.length === 0 ? (
+      {sortedLogs.length === 0 ? (
         <div className="text-center py-10 bg-white dark:bg-gray-800 rounded-2xl shadow-sm text-gray-500 dark:text-gray-400">
           No entries for this day.
         </div>
@@ -249,20 +333,20 @@ export default function FoodEntries() {
                       onChange={toggleSelectAll}
                     />
                   </th>
-                  <th className="px-2 py-2 font-semibold">Name</th>
-                  <th className="px-2 py-2 font-semibold">Brand</th>
-                  <th className="px-2 py-2 font-semibold">Qty</th>
-                  <th className="px-2 py-2 font-semibold">Serving</th>
-                  <th className="px-2 py-2 font-semibold">kcal</th>
-                  <th className="px-2 py-2 font-semibold">P</th>
-                  <th className="px-2 py-2 font-semibold">C</th>
-                  <th className="px-2 py-2 font-semibold">F</th>
-                  <th className="px-2 py-2 font-semibold">Food ID</th>
+                  <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('name')} className="hover:underline">Name{sortIndicator('name')}</button></th>
+                  <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('brand')} className="hover:underline">Brand{sortIndicator('brand')}</button></th>
+                  <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('quantity')} className="hover:underline">Qty{sortIndicator('quantity')}</button></th>
+                  <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('serving')} className="hover:underline">Serving{sortIndicator('serving')}</button></th>
+                  <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('calories')} className="hover:underline">kcal{sortIndicator('calories')}</button></th>
+                  <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('protein')} className="hover:underline">P{sortIndicator('protein')}</button></th>
+                  <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('carbs')} className="hover:underline">C{sortIndicator('carbs')}</button></th>
+                  <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('fat')} className="hover:underline">F{sortIndicator('fat')}</button></th>
+                  <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('foodId')} className="hover:underline">Food ID{sortIndicator('foodId')}</button></th>
                   <th className="px-2 py-2 font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {logs.map(log => (
+                {sortedLogs.map(log => (
                   <tr key={log.id} className="border-t border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-200">
                     <td className="px-2 py-2 whitespace-nowrap">
                       <input

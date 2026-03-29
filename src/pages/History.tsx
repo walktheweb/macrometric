@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getHistory, DayLog, getCheckins, getRaceGoal, RaceGoal, deleteCheckin, Checkin } from '../lib/api';
 
@@ -128,7 +129,15 @@ export default function History() {
                 return (
                   <div key={dateStr} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
                     <div className="px-4 py-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-100 dark:border-gray-600">
-                      <div className="font-medium text-gray-800 dark:text-gray-100">{formatDate(dateStr)}</div>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="font-medium text-gray-800 dark:text-gray-100">{formatDate(dateStr)}</div>
+                        <Link
+                          to={`/food-entries?date=${dateStr}`}
+                          className="text-xs text-blue-600 dark:text-blue-400 hover:underline whitespace-nowrap"
+                        >
+                          Open in Entry Manager
+                        </Link>
+                      </div>
                     </div>
                     
                     <div className="p-4">
