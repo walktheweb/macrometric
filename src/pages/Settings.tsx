@@ -7,7 +7,7 @@ import { formatDateDDMMYYYY } from '../lib/date';
 import MaterialIcon from '../components/MaterialIcon';
 
 const getVersionString = () => {
-  return '2.0.0';
+  return '1.0.0';
 };
 
 const normalizeToIsoDate = (value?: string | null): string => {
@@ -107,6 +107,7 @@ export default function Settings() {
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
   const [releaseNotes, setReleaseNotes] = useState<{ date: string; note: string }[]>([
+    { date: '29.03.2026', note: 'v1.0.0 - MacroMetric official first release' },
     { date: '28.03.2026', note: 'v2.0.002 - Event Goal with name, Check-in notes, History Goals tab' },
     { date: '28.03.2026', note: 'v2.0.001 - Edit/Delete My Foods, No duplicate add' },
     { date: '27.03.2026', note: 'Added OCR nutrition label scanner (Scan Label)' },
