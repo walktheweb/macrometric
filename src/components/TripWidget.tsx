@@ -11,9 +11,19 @@ interface TripWidgetProps {
 }
 
 export default function TripWidget({ trips }: TripWidgetProps) {
+  const getIsoWeekNumber = (date: Date) => {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  };
+
+  const currentWeekNumber = getIsoWeekNumber(new Date());
+
   const weekTrips = useMemo(() => {
     const today = new Date();
-    const dayOfWeek = today.getDay();
+    const dayOfWeek = (today.getDay() + 6) % 7; // Monday = 0
     const startOfWeek = new Date(today);
     startOfWeek.setDate(today.getDate() - dayOfWeek);
     const startStr = startOfWeek.toISOString().split('T')[0];
@@ -50,9 +60,9 @@ export default function TripWidget({ trips }: TripWidgetProps) {
         <div className="flex items-center gap-3">
           <MaterialIcon name="directions_bike" className="text-[28px]" />
           <div>
-            <div className="font-semibold">This Week</div>
+            <div className="text-lg font-semibold">Rides</div>
             <div className="text-sm opacity-80">
-              {weekStats.count} ride{weekStats.count !== 1 ? 's' : ''} | {weekStats.totalDistance.toFixed(0)} km | {formatDuration(weekStats.totalDuration)}
+              Week {currentWeekNumber} | {weekStats.count} ride{weekStats.count !== 1 ? 's' : ''} | {weekStats.totalDistance.toFixed(0)} km | {formatDuration(weekStats.totalDuration)}
             </div>
           </div>
         </div>

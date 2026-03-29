@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { getLogs, getGoals, deleteLog, updateLog, DayLog, Goal, FoodLog, getTodayCheckin, saveCheckin, getCheckins, getTrips, getRaceGoal, getDaysUntilRace, RaceGoal, getStepGoal, Checkin } from '../lib/api';
+import { getLogs, getGoals, deleteLog, updateLog, DayLog, Goal, FoodLog, getTodayCheckin, saveCheckin, getCheckins, getTrips, getRaceGoal, getDaysUntilRace, RaceGoal, getStepGoal, Checkin, getToday } from '../lib/api';
 import { formatDateDDMMYYYY } from '../lib/date';
 import RaceProgress from '../components/RaceProgress';
 import TripWidget from '../components/TripWidget';
@@ -113,14 +113,16 @@ export default function Dashboard() {
   const [stepGoal, setStepGoal] = useState(10000);
   const [lastWeightCheckin, setLastWeightCheckin] = useState<Checkin | null>(null);
   
-  const now = new Date();
-  const today = now.toISOString().split('T')[0];
-  const timeString = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const getCurrentTimeString = () => {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  };
+  const [currentDay, setCurrentDay] = useState(getToday());
   
   const [checkinData, setCheckinData] = useState({
     id: '',
-    date: today,
-    checkinTime: timeString,
+    date: getToday(),
+    checkinTime: getCurrentTimeString(),
     weight: '',
     steps: '',
     ketones: '',
@@ -139,7 +141,7 @@ export default function Dashboard() {
   const toCheckinFormData = (item: Checkin) => ({
     id: item.id || '',
     date: item.date,
-    checkinTime: item.checkinTime || timeString,
+    checkinTime: item.checkinTime || getCurrentTimeString(),
     weight: item.weight?.toString() || '',
     steps: item.steps?.toString() || '',
     ketones: item.ketones?.toString() || '',
@@ -175,6 +177,22 @@ export default function Dashboard() {
       loadData();
     }
   }, [userId]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const nextDay = getToday();
+      if (nextDay !== currentDay) {
+        setCurrentDay(nextDay);
+      }
+    }, 30000);
+
+    return () => window.clearInterval(timer);
+  }, [currentDay]);
+
+  useEffect(() => {
+    if (!userId) return;
+    loadData();
+  }, [currentDay]);
 
   useEffect(() => {
     const handleTodayNav = () => {
@@ -249,8 +267,8 @@ export default function Dashboard() {
       // Reset to default
       setCheckinData({
         id: '',
-        date: today,
-        checkinTime: timeString,
+        date: getToday(),
+        checkinTime: getCurrentTimeString(),
         weight: '',
         steps: '',
         ketones: '',
@@ -382,6 +400,11 @@ export default function Dashboard() {
   const splitFatPct = totalMacroCalories > 0 ? Math.round((totals.fat * 9 / totalMacroCalories) * 100) : 0;
   const splitProteinPct = totalMacroCalories > 0 ? Math.round((totals.protein * 4 / totalMacroCalories) * 100) : 0;
   const splitCarbsPct = totalMacroCalories > 0 ? Math.max(0, 100 - splitFatPct - splitProteinPct) : 0;
+  const weightTarget = raceGoal?.targetWeight || 80;
+  const latestWeight = lastWeightCheckin?.weight ?? null;
+  const weightDelta = latestWeight !== null ? Math.round((latestWeight - weightTarget) * 10) / 10 : null;
+  const weightMilestoneReached = weightDelta !== null ? weightDelta <= 0 : false;
+  const raceMilestoneReached = daysUntil <= 0;
 
   const dateObj = new Date();
   const dateStr = `${String(dateObj.getDate()).padStart(2, '0')}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${dateObj.getFullYear()}`;
@@ -693,6 +716,39 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-4">
+      <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl shadow-sm p-4 border border-indigo-100 dark:border-indigo-800">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-lg font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-2">
+            <MaterialIcon name="emoji_events" className="text-[20px] text-indigo-600 dark:text-indigo-400" />
+            Milestones
+          </span>
+          <Link
+            to="/history?tab=milestones"
+            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+          >
+            Open History
+          </Link>
+        </div>
+        <div className="space-y-2 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-gray-700 dark:text-gray-200">Under {weightTarget} kg</span>
+            {latestWeight === null ? (
+              <span className="text-gray-500 dark:text-gray-400">No weight yet</span>
+            ) : (
+              <span className={weightMilestoneReached ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-amber-600 dark:text-amber-400'}>
+                {weightMilestoneReached ? `Reached (${latestWeight} kg)` : `${weightDelta} kg to go`}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-gray-700 dark:text-gray-200">Race finish: {raceGoal?.eventName || 'Race'}</span>
+            <span className={raceMilestoneReached ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-blue-600 dark:text-blue-400'}>
+              {raceMilestoneReached ? 'Race day reached' : `${daysUntil} days left`}
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* BMI Card - from last known weight */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5">
         <div className="flex justify-between items-center mb-2">
@@ -755,8 +811,8 @@ export default function Dashboard() {
       {/* Steps Card */}
       <div className="bg-green-50 dark:bg-green-900/20 rounded-2xl shadow-sm p-5 border border-green-100 dark:border-green-800">
         <div className="flex justify-between items-center mb-2">
-          <span className="text-lg font-semibold text-green-800 dark:text-green-200 inline-flex items-center gap-2">
-            <MaterialIcon name="directions_walk" className="text-[20px]" />
+          <span className="text-lg font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-2">
+            <MaterialIcon name="directions_walk" className="text-[20px] text-green-600 dark:text-green-400" />
             Steps
           </span>
           <span className="text-lg font-bold text-green-600 dark:text-green-400">
@@ -808,7 +864,7 @@ export default function Dashboard() {
       {todayCheckins.length > 0 && (
         <div className="bg-purple-50 dark:bg-purple-900/20 rounded-2xl shadow-sm p-4 border border-purple-100 dark:border-purple-800">
           <div className="flex justify-between items-center mb-2">
-            <span className="text-sm font-medium text-purple-700 dark:text-purple-300">Today's Check-in</span>
+            <span className="text-lg font-semibold text-gray-800 dark:text-gray-100">Today's Check-in</span>
             <button 
               onClick={() => setShowCheckin(true)}
               className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-200"
@@ -854,10 +910,24 @@ export default function Dashboard() {
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-100 dark:border-gray-600">
-          <span className="font-medium text-gray-700 dark:text-gray-200">Today's Foods</span>
-          <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">
-            ({logs?.logs.length || 0} items)
-          </span>
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-lg font-semibold text-gray-800 dark:text-gray-100">Today's Foods</span>
+              <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">
+                ({logs?.logs.length || 0} items)
+              </span>
+            </div>
+            <div className="w-8 shrink-0 flex justify-end">
+              <Link
+                to={`/food-entries?date=${currentDay}`}
+                className="text-primary-500 dark:text-blue-400 hover:text-primary-600 dark:hover:text-blue-300 transition-colors"
+                title="Open Entry Manager"
+                aria-label="Open Entry Manager"
+              >
+                <MaterialIcon name="edit" className="text-[18px]" />
+              </Link>
+            </div>
+          </div>
         </div>
         
         {(!logs || logs.logs.length === 0) ? (
@@ -870,25 +940,27 @@ export default function Dashboard() {
               <button
                 key={log.id}
                 onClick={() => openEdit(log)}
-                className="w-full px-4 py-3 flex items-center hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
               >
                 <div className="flex-1 min-w-0 text-left">
                   <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{log.name}</div>
-                  <div className="text-sm text-gray-500 dark:text-gray-400">
+                  <div className="text-sm text-gray-500 dark:text-gray-400 truncate">
                     {log.brand && <span className="mr-2">{log.brand}</span>}
                     {log.serving}
                   </div>
                 </div>
-                <div className="text-right ml-4">
-                  <div className="font-medium text-gray-900 dark:text-gray-100">{Math.round(log.calories)}</div>
+                <div className="w-16 shrink-0 text-right">
+                  <div className="font-semibold tabular-nums text-gray-900 dark:text-gray-100">{Math.round(log.calories)}</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">kcal</div>
                 </div>
-                <div className="flex gap-2 ml-4 text-xs">
-                  <span className="text-blue-500 dark:text-blue-400">F:{Math.round(log.fat)}</span>
-                  <span className="text-red-500 dark:text-red-400">P:{Math.round(log.protein)}</span>
-                  <span className="text-amber-500 dark:text-amber-400">C:{Math.round(log.netCarbs && log.netCarbs > 0 ? log.netCarbs : log.carbs)}</span>
+                <div className="w-32 shrink-0 text-right">
+                  <div className="flex justify-end gap-2 text-xs font-medium tabular-nums whitespace-nowrap">
+                    <span className="text-blue-500 dark:text-blue-400">F:{Math.round(log.fat)}</span>
+                    <span className="text-red-500 dark:text-red-400">P:{Math.round(log.protein)}</span>
+                    <span className="text-amber-500 dark:text-amber-400">C:{Math.round(log.netCarbs && log.netCarbs > 0 ? log.netCarbs : log.carbs)}</span>
+                  </div>
                 </div>
-                <div className="ml-3 p-2 text-primary-500 dark:text-blue-400">
+                <div className="w-8 shrink-0 flex justify-end text-primary-500 dark:text-blue-400">
                   <MaterialIcon name="edit" className="text-[18px]" />
                 </div>
               </button>

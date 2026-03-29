@@ -2,7 +2,7 @@ import { useState, useEffect, ReactNode, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { getGoals, updateGoals, getRaceGoal, saveRaceGoal, getDaysUntilRace, changePassword, getStepGoal, saveStepGoal as saveStepGoalApi, exportUserData, importUserData } from '../lib/api';
+import { getGoals, updateGoals, getRaceGoal, saveRaceGoal, getDaysUntilRace, changePassword, getStepGoal, saveStepGoal as saveStepGoalApi, exportUserData, importUserData, getEventGoals, saveEventGoalItem, deleteEventGoalItem, setPrimaryEventGoal, EventGoalItem } from '../lib/api';
 import { formatDateDDMMYYYY } from '../lib/date';
 import MaterialIcon from '../components/MaterialIcon';
 
@@ -91,12 +91,18 @@ export default function Settings() {
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   
-  const [eventName, setEventName] = useState('');
   const [raceDate, setRaceDate] = useState('23-05-2026');
   const [raceTargetWeight, setRaceTargetWeight] = useState(80);
   const [raceWeeklyTarget, setRaceWeeklyTarget] = useState(0.5);
-  const [raceSaved, setRaceSaved] = useState(false);
   const [daysUntilRace, setDaysUntilRace] = useState(57);
+  const [eventGoals, setEventGoals] = useState<EventGoalItem[]>([]);
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
+  const [showGoalForm, setShowGoalForm] = useState(false);
+  const [goalFormName, setGoalFormName] = useState('');
+  const [goalFormDate, setGoalFormDate] = useState('23-05-2026');
+  const [goalFormTargetWeight, setGoalFormTargetWeight] = useState(80);
+  const [goalFormWeeklyTarget, setGoalFormWeeklyTarget] = useState(0.5);
+  const [goalSaved, setGoalSaved] = useState(false);
   const [stepGoal, setStepGoal] = useState(10000);
 
   const [showPasswordForm, setShowPasswordForm] = useState(false);
@@ -107,6 +113,7 @@ export default function Settings() {
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
   const [releaseNotes, setReleaseNotes] = useState<{ date: string; note: string }[]>([
+    { date: '30.03.2026', note: 'v1.2.0 - Event goals list (add/edit/delete), improved milestones flow, and safer race projection' },
     { date: '29.03.2026', note: 'v1.1.0 - Account login (email/password) across devices' },
     { date: '29.03.2026', note: 'v1.0.0 - MacroMetric official first release' },
     { date: '28.03.2026', note: 'v2.0.002 - Event Goal with name, Check-in notes, History Goals tab' },
@@ -167,10 +174,11 @@ export default function Settings() {
     if (!userId) return;
     setLoading(true);
     
-    const [stored, raceGoalData, stepGoalData] = await Promise.all([
+    const [stored, raceGoalData, stepGoalData, eventGoalsData] = await Promise.all([
       getGoals(userId),
       getRaceGoal(userId),
       getStepGoal(userId),
+      getEventGoals(userId),
     ]);
     
     setCalories(stored.calories);
@@ -193,7 +201,13 @@ export default function Settings() {
     setRaceDate(normalizeToDisplayDate(raceGoalData.raceDate));
     setRaceTargetWeight(raceGoalData.targetWeight);
     setRaceWeeklyTarget(raceGoalData.weeklyTarget);
-    setEventName(raceGoalData.eventName || '');
+    setEventGoals(eventGoalsData);
+    setGoalFormName('');
+    setGoalFormDate(normalizeToDisplayDate(raceGoalData.raceDate));
+    setGoalFormTargetWeight(raceGoalData.targetWeight);
+    setGoalFormWeeklyTarget(raceGoalData.weeklyTarget);
+    setEditingGoalId(null);
+    setShowGoalForm(false);
     setDaysUntilRace(await getDaysUntilRace(userId));
     setStepGoal(stepGoalData);
     setLoading(false);
@@ -225,18 +239,59 @@ export default function Settings() {
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const handleSaveRaceGoal = async () => {
-    if (!userId) return;
-    const safeRaceDate = normalizeToIsoDate(raceDate);
-    setRaceDate(normalizeToDisplayDate(safeRaceDate));
-    await saveRaceGoal(userId, {
-      eventName,
-      raceDate: safeRaceDate,
-      targetWeight: raceTargetWeight,
-      weeklyTarget: raceWeeklyTarget,
+  const handleSetEditingGoal = (goal: EventGoalItem) => {
+    setEditingGoalId(goal.id);
+    setGoalFormName(goal.eventName || '');
+    setGoalFormDate(normalizeToDisplayDate(goal.raceDate));
+    setGoalFormTargetWeight(goal.targetWeight);
+    setGoalFormWeeklyTarget(goal.weeklyTarget);
+    setShowGoalForm(true);
+  };
+
+  const handleNewGoal = () => {
+    setShowGoalForm((prev) => {
+      const next = !prev;
+      if (next) {
+        setEditingGoalId(null);
+        setGoalFormName('');
+        setGoalFormDate(normalizeToDisplayDate(raceDate));
+        setGoalFormTargetWeight(raceTargetWeight);
+        setGoalFormWeeklyTarget(raceWeeklyTarget);
+      } else {
+        setEditingGoalId(null);
+      }
+      return next;
     });
-    setRaceSaved(true);
-    setTimeout(() => setRaceSaved(false), 2000);
+  };
+
+  const handleSaveGoalFromForm = async () => {
+    if (!userId) return;
+    if (!goalFormName.trim()) return;
+    const safeRaceDate = normalizeToIsoDate(goalFormDate);
+    await saveEventGoalItem(userId, {
+      id: editingGoalId || undefined,
+      eventName: goalFormName.trim(),
+      raceDate: safeRaceDate,
+      targetWeight: goalFormTargetWeight,
+      weeklyTarget: goalFormWeeklyTarget,
+    });
+    await loadData();
+    setGoalSaved(true);
+    setTimeout(() => setGoalSaved(false), 2000);
+    setShowGoalForm(false);
+  };
+
+  const handleSetActiveEventGoal = async (id: string) => {
+    if (!userId) return;
+    await setPrimaryEventGoal(userId, id);
+    await loadData();
+  };
+
+  const handleDeleteEventGoal = async (id: string) => {
+    if (!userId) return;
+    await deleteEventGoalItem(userId, id);
+    const updatedGoals = await getEventGoals(userId);
+    setEventGoals(updatedGoals);
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -388,7 +443,6 @@ export default function Settings() {
   };
 
   const targetWeight = calculateTargetWeight();
-
   if (loading) {
     return (
       <div className="flex justify-center py-12">
@@ -556,78 +610,178 @@ export default function Settings() {
           </button>
       </CollapsibleSection>
 
-      {/* Event Goal */}
-      <CollapsibleSection title="Event Goal" icon="target" defaultExpanded={true} gradient>
+      {/* Event Goals */}
+      <CollapsibleSection title="Event Goals" icon="target" gradient>
         <div className="bg-white/10 rounded-xl p-4 space-y-4">
-          <div>
-            <label className="block text-sm opacity-80 mb-1">Event Name</label>
-            <input
-              type="text"
-              value={eventName}
-              onChange={(e) => setEventName(e.target.value)}
-              placeholder="e.g. Race, Wedding, Holiday, General"
-              className="w-full px-3 py-2 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/50 focus:ring-2 focus:ring-white outline-none"
-            />
+          <div className="text-xs uppercase tracking-wide opacity-70">Event Goals List</div>
+          <div className="space-y-2">
+            {eventGoals.map((goal) => (
+              <div key={goal.id} className="rounded-lg bg-white/20 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="font-semibold">
+                      {goal.eventName || 'Untitled goal'}
+                      {(goal.id === 'primary' || goal.isPrimary) && <span className="ml-2 text-xs px-2 py-0.5 rounded bg-green-500 text-white">Active</span>}
+                    </div>
+                    <div className="text-xs opacity-80">
+                      {formatDateDDMMYYYY(goal.raceDate)} | {goal.targetWeight} kg | {goal.weeklyTarget} kg/week
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    {goal.id !== 'primary' && !goal.isPrimary && (
+                      <button
+                        onClick={() => handleSetActiveEventGoal(goal.id)}
+                        className="px-3 py-1.5 rounded-md bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700"
+                      >
+                        Set Active
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleSetEditingGoal(goal)}
+                      className="px-3 py-1.5 rounded-md bg-slate-900/90 text-white border border-white/30 text-xs font-semibold hover:bg-slate-900"
+                    >
+                      Edit
+                    </button>
+                    {goal.id !== 'primary' && !goal.isPrimary && (
+                      <button
+                        onClick={() => handleDeleteEventGoal(goal.id)}
+                        className="px-3 py-1.5 rounded-md bg-red-600 text-white text-xs font-semibold hover:bg-red-700"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm opacity-80 mb-1">Event Date</label>
-              <input
-                type="text"
-                value={raceDate}
-                onChange={(e) => setRaceDate(e.target.value.replaceAll('/', '-').replaceAll('.', '-'))}
-                onBlur={() => setRaceDate(normalizeToDisplayDate(raceDate))}
-                placeholder="dd-mm-yyyy"
-                inputMode="numeric"
-                className="w-full px-3 py-2 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/50 focus:ring-2 focus:ring-white outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm opacity-80 mb-1">Target Weight</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  step="0.1"
-                  value={raceTargetWeight}
-                  onChange={(e) => setRaceTargetWeight(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/50 focus:ring-2 focus:ring-white outline-none"
-                />
-                <span className="text-white">kg</span>
+          <div className="border-t border-white/30 pt-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-xs uppercase tracking-wide opacity-70">
+                {showGoalForm ? (editingGoalId ? 'Edit Goal' : 'Add Goal') : 'Form Collapsed'}
               </div>
+              <button
+                onClick={handleNewGoal}
+                className="px-2 py-1 rounded-md bg-white/20 text-white text-xs font-medium hover:bg-white/30"
+              >
+                {showGoalForm ? 'Close' : '+ New'}
+              </button>
+            </div>
+            {showGoalForm && (
+              <>
+                <div>
+                  <label className="block text-sm opacity-80 mb-1">Event Name</label>
+                  <input
+                    type="text"
+                    value={goalFormName}
+                    onChange={(e) => setGoalFormName(e.target.value)}
+                    placeholder="e.g. Race, Wedding, Bodybuilding show"
+                    className="w-full px-3 py-2 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/50 focus:ring-2 focus:ring-white outline-none"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm opacity-80 mb-1">Event Date</label>
+                    <input
+                      type="text"
+                      value={goalFormDate}
+                      onChange={(e) => setGoalFormDate(e.target.value.replaceAll('/', '-').replaceAll('.', '-'))}
+                      onBlur={() => setGoalFormDate(normalizeToDisplayDate(goalFormDate))}
+                      placeholder="dd-mm-yyyy"
+                      inputMode="numeric"
+                      className="w-full px-3 py-2 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/50 focus:ring-2 focus:ring-white outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm opacity-80 mb-1">Target Weight</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={goalFormTargetWeight}
+                        onChange={(e) => setGoalFormTargetWeight(Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/50 focus:ring-2 focus:ring-white outline-none"
+                      />
+                      <span className="text-white">kg</span>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm opacity-80 mb-1">Weekly Weight Target</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      max="2"
+                      value={goalFormWeeklyTarget}
+                      onChange={(e) => setGoalFormWeeklyTarget(Number(e.target.value))}
+                      className="w-full px-3 py-2 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/50 focus:ring-2 focus:ring-white outline-none"
+                    />
+                    <span className="text-white">kg/week</span>
+                  </div>
+                  <p className="text-xs opacity-70 mt-1">{daysUntilRace} days until active event</p>
+                </div>
+                <button
+                  onClick={handleSaveGoalFromForm}
+                  disabled={!goalFormName.trim()}
+                  className={`w-full py-2 rounded-lg font-semibold transition-colors ${
+                    !goalFormName.trim()
+                      ? 'bg-white/30 text-white/60 cursor-not-allowed'
+                      : 'bg-white text-blue-600 hover:bg-white/90'
+                  }`}
+                >
+                  <span className="inline-flex items-center justify-center gap-1">
+                    {goalSaved && <MaterialIcon name="check_circle" className="text-[18px]" />}
+                    {goalSaved ? 'Saved!' : editingGoalId ? 'Save Changes' : 'Add Goal'}
+                  </span>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </CollapsibleSection>
+
+      {/* Auto Milestones */}
+      <CollapsibleSection title="Auto Milestones" icon="emoji_events">
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            Deze milestones worden automatisch berekend. In History zie je alleen de milestones die al zijn geraakt.
+          </p>
+
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
+            <div className="inline-flex items-center gap-2 text-sm font-medium text-gray-800 dark:text-gray-100">
+              <MaterialIcon name="monitor_weight" className="text-[18px] text-indigo-600 dark:text-indigo-400" />
+              Every kg less
+            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Gebaseerd op je check-ins en target weight.
+            </div>
+            <div className="text-sm text-gray-700 dark:text-gray-200 mt-2">
+              Target: <span className="font-semibold">{raceTargetWeight} kg</span>
             </div>
           </div>
-          
-          <div>
-            <label className="block text-sm opacity-80 mb-1">Weekly Weight Target</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                step="0.1"
-                min="0.1"
-                max="2"
-                value={raceWeeklyTarget}
-                onChange={(e) => setRaceWeeklyTarget(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/50 focus:ring-2 focus:ring-white outline-none"
-              />
-              <span className="text-white">kg/week</span>
+
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
+            <div className="inline-flex items-center gap-2 text-sm font-medium text-gray-800 dark:text-gray-100">
+              <MaterialIcon name="flag" className="text-[18px] text-indigo-600 dark:text-indigo-400" />
+              Race finish date
             </div>
-            <p className="text-xs opacity-70 mt-1">{daysUntilRace} days until event</p>
+            <div className="text-sm text-gray-700 dark:text-gray-200 mt-2">
+              Event date: <span className="font-semibold">{raceDate}</span>
+            </div>
           </div>
-          
-          <button
-            onClick={handleSaveRaceGoal}
-            className={`w-full py-2 rounded-lg font-semibold transition-colors ${
-              raceSaved
-                ? 'bg-green-400 text-white'
-                : 'bg-white text-blue-600 hover:bg-white/90'
-            }`}
-          >
-            <span className="inline-flex items-center justify-center gap-1">
-              {raceSaved && <MaterialIcon name="check_circle" className="text-[18px]" />}
-              {raceSaved ? 'Saved!' : 'Save Event Goal'}
-            </span>
-          </button>
+
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
+            <div className="inline-flex items-center gap-2 text-sm font-medium text-gray-800 dark:text-gray-100">
+              <MaterialIcon name="local_fire_department" className="text-[18px] text-orange-500 dark:text-orange-400" />
+              Achievement: ketosis &gt; 0.5
+            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Zodra een check-in ketonen boven 0.5 heeft, wordt deze milestone als behaald getoond.
+            </div>
+          </div>
         </div>
       </CollapsibleSection>
 

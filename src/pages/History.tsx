@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { getHistory, DayLog, getCheckins, getRaceGoal, RaceGoal, deleteCheckin, Checkin } from '../lib/api';
+import { getHistory, DayLog, getCheckins, getRaceGoal, RaceGoal, deleteCheckin, Checkin, getEventGoals, EventGoalItem } from '../lib/api';
 import { formatDateDDMMYYYY } from '../lib/date';
 import MaterialIcon from '../components/MaterialIcon';
 
@@ -10,12 +10,14 @@ export default function History() {
   const { userId, loading: authLoading } = useAuth();
   const [history, setHistory] = useState<Record<string, DayLog>>({});
   const [checkins, setCheckins] = useState<Checkin[]>([]);
+  const [allCheckins, setAllCheckins] = useState<Checkin[]>([]);
+  const [eventGoals, setEventGoals] = useState<EventGoalItem[]>([]);
   const [raceGoal, setRaceGoal] = useState<RaceGoal | null>(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(7);
   const initialTab = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState<'food' | 'checkin' | 'goals'>(
-    initialTab === 'checkin' || initialTab === 'goals' ? initialTab : 'food'
+  const [activeTab, setActiveTab] = useState<'food' | 'checkin' | 'goals' | 'milestones'>(
+    initialTab === 'checkin' || initialTab === 'goals' || initialTab === 'milestones' ? initialTab : 'food'
   );
   const [expandedFoodDates, setExpandedFoodDates] = useState<Set<string>>(new Set());
 
@@ -28,14 +30,17 @@ export default function History() {
   const loadData = async () => {
     if (!userId) return;
     setLoading(true);
-    const [historyData, checkinsData, raceGoalData] = await Promise.all([
+    const [historyData, checkinsData, raceGoalData, eventGoalsData] = await Promise.all([
       getHistory(userId, days),
       getCheckins(userId),
       getRaceGoal(userId),
+      getEventGoals(userId),
     ]);
     setHistory(historyData);
+    setAllCheckins(checkinsData);
     setCheckins(checkinsData.slice(0, 30));
     setRaceGoal(raceGoalData);
+    setEventGoals(eventGoalsData);
     setLoading(false);
   };
 
@@ -82,6 +87,45 @@ export default function History() {
   }
 
   const sortedDates = Object.keys(history).sort((a, b) => b.localeCompare(a));
+  const latestWeightEntry = allCheckins.find((item) => typeof item.weight === 'number' && Number.isFinite(item.weight));
+  const latestWeight = latestWeightEntry?.weight ?? null;
+  const weightedAsc = allCheckins
+    .filter((item) => typeof item.weight === 'number' && Number.isFinite(item.weight))
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const firstWeight = weightedAsc[0]?.weight ?? null;
+  const targetWeight = raceGoal?.targetWeight ?? null;
+  const today = new Date();
+  const ketosisEntries = allCheckins
+    .filter((item) => typeof item.ketones === 'number' && Number.isFinite(item.ketones))
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const ketosisReachedEntry = ketosisEntries.find((item) => (item.ketones || 0) > 0.5) || null;
+  const ketoDone = !!ketosisReachedEntry;
+  const achievedEventGoals = eventGoals.filter((goal) => {
+    const eventDate = new Date(`${goal.raceDate}T00:00:00`);
+    return eventDate.getTime() <= new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  });
+
+  const weightAutoGoals: Array<{ threshold: number; done: boolean }> = [];
+  if (firstWeight !== null && latestWeight !== null) {
+    const fromThreshold = Math.floor(firstWeight) - 1;
+    const targetThreshold = targetWeight !== null ? Math.floor(targetWeight) : Math.floor(latestWeight);
+    if (fromThreshold >= targetThreshold) {
+      for (let threshold = fromThreshold; threshold >= targetThreshold; threshold -= 1) {
+        weightAutoGoals.push({
+          threshold,
+          done: latestWeight < threshold,
+        });
+      }
+    }
+  }
+  const achievedWeightMilestones = weightAutoGoals
+    .filter((goal) => goal.done)
+    .map((goal) => {
+      const firstHit = weightedAsc.find((entry) => (entry.weight || Number.POSITIVE_INFINITY) < goal.threshold);
+      return { threshold: goal.threshold, date: firstHit?.date || latestWeightEntry?.date || '' };
+    });
 
   return (
     <div className="space-y-4">
@@ -122,6 +166,14 @@ export default function History() {
           }`}
         >
           Goals
+        </button>
+        <button
+          onClick={() => setActiveTab('milestones')}
+          className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
+            activeTab === 'milestones' ? 'bg-white dark:bg-gray-600 shadow text-primary-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300'
+          }`}
+        >
+          Milestones
         </button>
       </div>
 
@@ -335,6 +387,61 @@ export default function History() {
               <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Weekly Target</div>
             </div>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'milestones' && (
+        <div className="space-y-3">
+          <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-xl shadow-sm p-4 border border-indigo-100 dark:border-indigo-800">
+            <div className="text-sm font-semibold text-indigo-700 dark:text-indigo-300 mb-3">Achieved Milestones</div>
+            <div className="space-y-2">
+              {achievedWeightMilestones.map((item) => (
+                <div key={`weight-${item.threshold}`} className="rounded-lg border border-green-200 dark:border-green-800 bg-white/80 dark:bg-green-950/20 p-3">
+                  <div className="flex items-center justify-between gap-2 text-sm">
+                    <div className="inline-flex items-center gap-2 text-gray-800 dark:text-gray-100">
+                      <MaterialIcon name="monitor_weight" className="text-[18px] text-green-600 dark:text-green-400" />
+                      Under {item.threshold} kg
+                    </div>
+                    <span className="text-green-600 dark:text-green-400 font-semibold">Done</span>
+                  </div>
+                  {item.date && <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">{formatDateDDMMYYYY(item.date)}</div>}
+                </div>
+              ))}
+
+              {achievedEventGoals.map((goal) => (
+                <div key={`event-${goal.id}`} className="rounded-lg border border-green-200 dark:border-green-800 bg-white/80 dark:bg-green-950/20 p-3">
+                  <div className="flex items-center justify-between gap-2 text-sm">
+                    <div className="inline-flex items-center gap-2 text-gray-800 dark:text-gray-100">
+                      <MaterialIcon name="flag" className="text-[18px] text-green-600 dark:text-green-400" />
+                      {goal.eventName || 'Event goal reached'}
+                    </div>
+                    <span className="text-green-600 dark:text-green-400 font-semibold">Done</span>
+                  </div>
+                  <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">{formatDateDDMMYYYY(goal.raceDate)}</div>
+                </div>
+              ))}
+
+              {ketoDone && ketosisReachedEntry && (
+                <div className="rounded-lg border border-green-200 dark:border-green-800 bg-white/80 dark:bg-green-950/20 p-3">
+                  <div className="flex items-center justify-between gap-2 text-sm">
+                    <div className="inline-flex items-center gap-2 text-gray-800 dark:text-gray-100">
+                      <MaterialIcon name="local_fire_department" className="text-[18px] text-orange-500 dark:text-orange-400" />
+                      Hit ketosis {'>'} 0.5
+                    </div>
+                    <span className="text-green-600 dark:text-green-400 font-semibold">Done</span>
+                  </div>
+                  <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                    {ketosisReachedEntry.ketones} on {formatDateDDMMYYYY(ketosisReachedEntry.date)}
+                  </div>
+                </div>
+              )}
+
+              {achievedWeightMilestones.length === 0 && achievedEventGoals.length === 0 && !ketoDone && (
+                <div className="text-sm text-gray-500 dark:text-gray-400">No milestones reached yet.</div>
+              )}
+            </div>
+          </div>
+
         </div>
       )}
     </div>

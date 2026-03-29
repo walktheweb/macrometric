@@ -11,36 +11,50 @@ interface RaceProgressProps {
 }
 
 export default function RaceProgress({ checkins, raceGoal, daysUntil, weeksUntil }: RaceProgressProps) {
-  const { currentWeight, weeklyRate, projectedWeight, progress } = useMemo(() => {
+  const { currentWeight, weeklyRate, projectedWeight, progress, usingGoalProjection } = useMemo(() => {
     const weightsWithDate = checkins
-      .filter(c => c.weight)
+      .filter((c) => typeof c.weight === 'number' && Number.isFinite(c.weight) && (c.weight as number) > 0 && (c.weight as number) < 400)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     const current = weightsWithDate[0]?.weight ?? null;
     const startWeight = weightsWithDate[weightsWithDate.length - 1]?.weight ?? current ?? 0;
 
     let rate = 0;
+    let hasReliableTrend = false;
     if (weightsWithDate.length >= 2 && current !== null) {
-      const daysDiff = Math.max(1, 
-        (new Date(weightsWithDate[0].date).getTime() - new Date(weightsWithDate[weightsWithDate.length - 1].date).getTime()) 
-        / (1000 * 60 * 60 * 24)
+      const daysDiff = Math.max(
+        1,
+        (new Date(weightsWithDate[0].date).getTime() - new Date(weightsWithDate[weightsWithDate.length - 1].date).getTime()) /
+          (1000 * 60 * 60 * 24)
       );
       const weeksDiff = daysDiff / 7;
-      rate = weeksDiff > 0 ? (startWeight - current) / weeksDiff : 0;
+      // Prevent unstable rates when measurements are too close in time.
+      if (daysDiff >= 7 && weeksDiff > 0) {
+        rate = (startWeight - current) / weeksDiff;
+        hasReliableTrend = true;
+      }
     }
 
-    const projWeight = current !== null ? current - (rate * weeksUntil) : null;
-    const prog = (current && startWeight && startWeight !== raceGoal.targetWeight)
-      ? ((startWeight - current) / (startWeight - raceGoal.targetWeight)) * 100
-      : 0;
+    const boundedRate = Math.max(-2, Math.min(2, rate));
+    const goalRate = Math.max(0, Math.min(2, raceGoal.weeklyTarget || 0));
+    const projectionRate = hasReliableTrend ? boundedRate : goalRate;
+    const remainingWeeks = Math.max(0, daysUntil / 7);
+    const rawProjected = current !== null ? current - projectionRate * remainingWeeks : null;
+    const projWeight = rawProjected !== null ? Math.max(30, Math.min(250, rawProjected)) : null;
+
+    const prog =
+      current && startWeight && startWeight !== raceGoal.targetWeight
+        ? ((startWeight - current) / (startWeight - raceGoal.targetWeight)) * 100
+        : 0;
 
     return {
       currentWeight: current,
-      weeklyRate: rate,
+      weeklyRate: boundedRate,
       projectedWeight: projWeight,
       progress: Math.min(100, Math.max(0, prog)),
+      usingGoalProjection: !hasReliableTrend,
     };
-  }, [checkins, raceGoal, weeksUntil]);
+  }, [checkins, raceGoal, daysUntil, weeksUntil]);
 
   const formatDate = (dateStr: string) => {
     return formatDateDDMMYYYY(dateStr);
@@ -76,7 +90,7 @@ export default function RaceProgress({ checkins, raceGoal, daysUntil, weeksUntil
     );
   }
 
-  const totalWeeks = Math.ceil((new Date(raceGoal.raceDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 7));
+  const totalWeeks = Math.max(1, Math.ceil((new Date(raceGoal.raceDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 7)));
   const weeksPassed = Math.max(0, totalWeeks - Math.ceil(weeksUntil));
   const weekDots = Array.from({ length: Math.min(8, totalWeeks) }, (_, i) => i < weeksPassed);
 
@@ -93,20 +107,14 @@ export default function RaceProgress({ checkins, raceGoal, daysUntil, weeksUntil
       <div className="bg-white/10 rounded-xl p-4 mb-4">
         <div className="flex justify-between text-sm mb-2">
           <span>Weight Progress</span>
-          <span>{currentWeight}kg → {raceGoal.targetWeight}kg</span>
+          <span>{currentWeight}kg -&gt; {raceGoal.targetWeight}kg</span>
         </div>
         <div className="h-3 bg-white/20 rounded-full overflow-hidden">
-          <div 
-            className="h-full bg-white rounded-full transition-all duration-500"
-            style={{ width: `${progress}%` }}
-          />
+          <div className="h-full bg-white rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
         </div>
         <div className="flex items-center gap-1 mt-3">
           {weekDots.map((filled, i) => (
-            <div 
-              key={i}
-              className={`w-4 h-4 rounded-full ${filled ? 'bg-white' : 'bg-white/30'}`}
-            />
+            <div key={i} className={`w-4 h-4 rounded-full ${filled ? 'bg-white' : 'bg-white/30'}`} />
           ))}
           <span className="text-xs ml-2 opacity-80">Week {weeksPassed + 1}/{totalWeeks}</span>
         </div>
@@ -115,13 +123,11 @@ export default function RaceProgress({ checkins, raceGoal, daysUntil, weeksUntil
       <div className={`rounded-xl p-3 flex items-center justify-between ${getStatusColor()}`}>
         <div>
           <div className="font-semibold text-sm">{getStatusText()}</div>
-          <div className="text-xs opacity-80">
-            {weeklyRate.toFixed(1)} kg/week (target: {raceGoal.weeklyTarget})
-          </div>
+          <div className="text-xs opacity-80">{weeklyRate.toFixed(1)} kg/week (target: {raceGoal.weeklyTarget})</div>
         </div>
-        {projectedWeight && (
+        {projectedWeight !== null && (
           <div className="text-right">
-            <div className="text-xs opacity-80">Projected</div>
+            <div className="text-xs opacity-80">{usingGoalProjection ? 'Projected (goal)' : 'Projected'}</div>
             <div className="font-semibold">{projectedWeight.toFixed(1)}kg</div>
           </div>
         )}
@@ -129,4 +135,3 @@ export default function RaceProgress({ checkins, raceGoal, daysUntil, weeksUntil
     </div>
   );
 }
-

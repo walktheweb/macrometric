@@ -4,8 +4,8 @@ import MaterialIcon from './MaterialIcon';
 import { logout } from '../lib/api';
 
 const navItems = [
-  { to: '/trips', label: 'Cycling', icon: 'add_circle' },
-  { to: '/add', label: 'Food', icon: 'directions_bike' },
+  { to: '/add', label: 'Food', icon: 'add_circle' },
+  { to: '/trips', label: 'Cycling', icon: 'directions_bike' },
   { to: '/history', label: 'History', icon: 'history' },
 ];
 
@@ -88,7 +88,7 @@ export default function Layout() {
                   }`
                 }
               >
-                <MaterialIcon name={icon} className="text-[22px]" />
+                <MaterialIcon name={icon} className="text-[28px]" />
               </NavLink>
             ))}
           </div>
@@ -104,7 +104,7 @@ export default function Layout() {
               aria-label="Open options"
               className="flex items-center justify-center p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
             >
-              <MaterialIcon name={moreOpen ? 'close' : 'menu'} className="text-[24px]" />
+              <MaterialIcon name={moreOpen ? 'close' : 'menu'} className="text-[28px]" />
             </button>
             <div
               className={`absolute right-0 top-0 z-20 w-40 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden transition-all duration-200 ${
@@ -117,8 +117,8 @@ export default function Layout() {
                 className={({ isActive }) =>
                   `flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
                     isActive
-                      ? 'text-primary-600 bg-primary-50'
-                      : 'text-gray-700 hover:bg-gray-100'
+                      ? 'text-primary-900 bg-primary-200 font-medium dark:text-blue-100 dark:bg-blue-900/70'
+                      : 'text-gray-800 hover:bg-gray-200 dark:text-gray-100 dark:hover:bg-gray-700'
                   }`
                 }
               >

@@ -33,7 +33,7 @@ export default function Trips() {
 
   const weekStats = useMemo(() => {
     const today = new Date();
-    const dayOfWeek = today.getDay();
+    const dayOfWeek = (today.getDay() + 6) % 7; // Monday = 0
     const startOfWeek = new Date(today);
     startOfWeek.setDate(today.getDate() - dayOfWeek);
     const startStr = startOfWeek.toISOString().split('T')[0];
@@ -45,6 +45,16 @@ export default function Trips() {
       totalDuration: weekTrips.reduce((sum, t) => sum + t.duration, 0),
     };
   }, [trips]);
+
+  const getIsoWeekNumber = (date: Date) => {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  };
+
+  const currentWeekNumber = getIsoWeekNumber(new Date());
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,7 +138,7 @@ export default function Trips() {
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm text-gray-500 dark:text-gray-400">This Week</div>
+            <div className="text-sm text-gray-500 dark:text-gray-400">{currentWeekNumber}</div>
             <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
               {weekStats.count} rides | {weekStats.totalDistance.toFixed(0)} km | {formatDuration(weekStats.totalDuration)}
             </div>
