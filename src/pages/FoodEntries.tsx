@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { addLog, deleteLog, FoodLog, getLogs, getToday, updateLog } from '../lib/api';
 
@@ -272,6 +272,12 @@ export default function FoodEntries() {
     <div className="space-y-4">
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-3">
         <div className="flex items-center gap-3 flex-wrap">
+          <Link
+            to="/my-foods"
+            className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600"
+          >
+            Open Food Manager
+          </Link>
           <label className="text-sm font-medium text-gray-600 dark:text-gray-300">Date</label>
           <input
             data-autofocus-first
