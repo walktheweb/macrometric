@@ -137,6 +137,19 @@ export interface Milestone {
   updatedAt?: number;
 }
 
+export interface ReleaseNoteItem {
+  id: string;
+  date: string;
+  note: string;
+  createdAt: number;
+}
+
+export interface FeatureRequestItem {
+  id: string;
+  text: string;
+  createdAt: number;
+}
+
 export interface DataExportV1 {
   version: 1;
   exportedAt: string;
@@ -152,6 +165,8 @@ export interface DataExportV1 {
     race_goals: any[];
     event_goals: any[];
     milestones: any[];
+    release_notes: any[];
+    feature_requests: any[];
   };
 }
 
@@ -165,46 +180,6 @@ export function getToday(): string {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
-}
-
-function milestoneStorageKey(userId: string): string {
-  return `macrometric_milestones_${userId}`;
-}
-
-function eventGoalsStorageKey(userId: string): string {
-  return `macrometric_event_goals_${userId}`;
-}
-
-function readMilestonesFromLocal(userId: string): Milestone[] {
-  try {
-    const raw = localStorage.getItem(milestoneStorageKey(userId));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed as Milestone[];
-  } catch {
-    return [];
-  }
-}
-
-function writeMilestonesToLocal(userId: string, milestones: Milestone[]): void {
-  localStorage.setItem(milestoneStorageKey(userId), JSON.stringify(milestones));
-}
-
-function readEventGoalsFromLocal(userId: string): EventGoalItem[] {
-  try {
-    const raw = localStorage.getItem(eventGoalsStorageKey(userId));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed as EventGoalItem[];
-  } catch {
-    return [];
-  }
-}
-
-function writeEventGoalsToLocal(userId: string, goals: EventGoalItem[]): void {
-  localStorage.setItem(eventGoalsStorageKey(userId), JSON.stringify(goals));
 }
 
 // Helper to get user ID from localStorage (used by components)
@@ -1176,9 +1151,25 @@ export async function getWeeksUntilRace(userId: string): Promise<number> {
 
 export async function getEventGoals(userId: string): Promise<EventGoalItem[]> {
   const primary = await getRaceGoal(userId);
-  const extras = readEventGoalsFromLocal(userId)
-    .filter((g) => g.id !== 'primary')
-    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const { data, error } = await supabase
+    .from('event_goals')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching event goals:', error);
+  }
+
+  const extras = ((data || []) as any[]).map((g) => ({
+    id: g.id,
+    eventName: g.event_name || '',
+    raceDate: g.race_date || getToday(),
+    targetWeight: g.target_weight || 80,
+    weeklyTarget: g.weekly_target || 0.5,
+    createdAt: g.created_at || Date.now(),
+    isPrimary: false,
+  })) as EventGoalItem[];
 
   return [
     {
@@ -1216,38 +1207,71 @@ export async function saveEventGoalItem(
     };
   }
 
-  const existing = readEventGoalsFromLocal(userId);
   const id = goal.id || generateId();
-  const next: EventGoalItem = {
+  const record = {
     id,
-    eventName: goal.eventName,
-    raceDate: goal.raceDate,
-    targetWeight: goal.targetWeight,
-    weeklyTarget: goal.weeklyTarget,
-    createdAt: Date.now(),
+    user_id: userId,
+    event_name: goal.eventName,
+    race_date: goal.raceDate,
+    target_weight: goal.targetWeight,
+    weekly_target: goal.weeklyTarget,
+    created_at: Date.now(),
   };
-  const idx = existing.findIndex((g) => g.id === id);
-  if (idx >= 0) {
-    next.createdAt = existing[idx].createdAt || next.createdAt;
-    existing[idx] = next;
-  } else {
-    existing.push(next);
+
+  const { error } = await supabase
+    .from('event_goals')
+    .upsert(record, { onConflict: 'id' });
+
+  if (error) {
+    console.error('Error saving event goal item:', error);
   }
-  writeEventGoalsToLocal(userId, existing);
-  return next;
+
+  return {
+    id: record.id,
+    eventName: record.event_name,
+    raceDate: record.race_date,
+    targetWeight: record.target_weight,
+    weeklyTarget: record.weekly_target,
+    createdAt: record.created_at,
+    isPrimary: false,
+  };
 }
 
 export async function deleteEventGoalItem(userId: string, id: string): Promise<void> {
   if (id === 'primary') return;
-  const existing = readEventGoalsFromLocal(userId);
-  writeEventGoalsToLocal(userId, existing.filter((g) => g.id !== id));
+  const { error } = await supabase
+    .from('event_goals')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('Error deleting event goal item:', error);
+  }
 }
 
 export async function setPrimaryEventGoal(userId: string, id: string): Promise<void> {
   if (id === 'primary') return;
-  const existing = readEventGoalsFromLocal(userId);
-  const selected = existing.find((g) => g.id === id);
-  if (!selected) return;
+  const { data: selected, error: selectedError } = await supabase
+    .from('event_goals')
+    .select('*')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .single();
+
+  if (selectedError || !selected) {
+    console.error('Error loading selected event goal:', selectedError);
+    return;
+  }
+
+  const selectedGoal: EventGoalItem = {
+    id: selected.id,
+    eventName: selected.event_name || '',
+    raceDate: selected.race_date || getToday(),
+    targetWeight: selected.target_weight || 80,
+    weeklyTarget: selected.weekly_target || 0.5,
+    createdAt: selected.created_at || Date.now(),
+  };
 
   const currentPrimary = await getRaceGoal(userId);
   const shouldStoreCurrentPrimary =
@@ -1257,30 +1281,41 @@ export async function setPrimaryEventGoal(userId: string, id: string): Promise<v
     currentPrimary.weeklyTarget > 0;
 
   if (shouldStoreCurrentPrimary) {
-    const snapshot: EventGoalItem = {
+    const previousPrimaryInsert = {
       id: generateId(),
-      eventName: currentPrimary.eventName,
-      raceDate: currentPrimary.raceDate,
-      targetWeight: currentPrimary.targetWeight,
-      weeklyTarget: currentPrimary.weeklyTarget,
-      createdAt: Date.now(),
+      user_id: userId,
+      event_name: currentPrimary.eventName,
+      race_date: currentPrimary.raceDate,
+      target_weight: currentPrimary.targetWeight,
+      weekly_target: currentPrimary.weeklyTarget,
+      created_at: Date.now(),
     };
-    existing.push(snapshot);
+    const { error: savePrevError } = await supabase.from('event_goals').insert(previousPrimaryInsert);
+    if (savePrevError) {
+      console.error('Error archiving previous primary event goal:', savePrevError);
+    }
   }
 
   await saveRaceGoal(userId, {
-    eventName: selected.eventName,
-    raceDate: selected.raceDate,
-    targetWeight: selected.targetWeight,
-    weeklyTarget: selected.weeklyTarget,
+    eventName: selectedGoal.eventName,
+    raceDate: selectedGoal.raceDate,
+    targetWeight: selectedGoal.targetWeight,
+    weeklyTarget: selectedGoal.weeklyTarget,
   });
 
-  writeEventGoalsToLocal(userId, existing.filter((g) => g.id !== id));
+  const { error: deleteSelectedError } = await supabase
+    .from('event_goals')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', userId);
+
+  if (deleteSelectedError) {
+    console.error('Error deleting selected event goal after activation:', deleteSelectedError);
+  }
 }
 
 // Milestones
 export async function getMilestones(userId: string): Promise<Milestone[]> {
-  const localMilestones = readMilestonesFromLocal(userId);
   const { data, error } = await supabase
     .from('milestones')
     .select('*')
@@ -1289,15 +1324,11 @@ export async function getMilestones(userId: string): Promise<Milestone[]> {
     .order('created_at', { ascending: false });
 
   if (error) {
-    console.warn('Milestones table unavailable, using local fallback:', error.message);
-    return localMilestones.sort((a, b) => {
-      const dateCmp = b.date.localeCompare(a.date);
-      if (dateCmp !== 0) return dateCmp;
-      return (b.createdAt || 0) - (a.createdAt || 0);
-    });
+    console.error('Error fetching milestones:', error);
+    return [];
   }
 
-  const remoteMilestones = (data || []).map((m: any) => ({
+  return ((data || []) as any[]).map((m: any) => ({
     id: m.id,
     title: m.title || '',
     date: m.date || getToday(),
@@ -1306,20 +1337,6 @@ export async function getMilestones(userId: string): Promise<Milestone[]> {
     createdAt: m.created_at || Date.now(),
     updatedAt: m.updated_at || undefined,
   }));
-
-  // Merge remote + local fallback data so locally saved milestones stay visible
-  // when remote insert fails but remote select still works.
-  const byId = new Map<string, Milestone>();
-  for (const remote of remoteMilestones) byId.set(remote.id, remote);
-  for (const local of localMilestones) {
-    if (!byId.has(local.id)) byId.set(local.id, local);
-  }
-
-  return Array.from(byId.values()).sort((a, b) => {
-    const dateCmp = b.date.localeCompare(a.date);
-    if (dateCmp !== 0) return dateCmp;
-    return (b.createdAt || 0) - (a.createdAt || 0);
-  });
 }
 
 export async function saveMilestone(
@@ -1341,7 +1358,11 @@ export async function saveMilestone(
     .from('milestones')
     .upsert(record, { onConflict: 'id' });
 
-  const normalized: Milestone = {
+  if (error) {
+    console.error('Error saving milestone:', error);
+  }
+
+  return {
     id: record.id,
     title: record.title,
     date: record.date,
@@ -1350,24 +1371,6 @@ export async function saveMilestone(
     createdAt: record.created_at,
     updatedAt: record.updated_at,
   };
-
-  if (error) {
-    const existing = readMilestonesFromLocal(userId);
-    const idx = existing.findIndex((m) => m.id === normalized.id);
-    if (idx >= 0) existing[idx] = { ...existing[idx], ...normalized, createdAt: existing[idx].createdAt || normalized.createdAt };
-    else existing.push(normalized);
-    writeMilestonesToLocal(userId, existing);
-    return normalized;
-  }
-
-  // Keep local cache in sync as well for reliability.
-  const existing = readMilestonesFromLocal(userId);
-  const idx = existing.findIndex((m) => m.id === normalized.id);
-  if (idx >= 0) existing[idx] = { ...existing[idx], ...normalized, createdAt: existing[idx].createdAt || normalized.createdAt };
-  else existing.push(normalized);
-  writeMilestonesToLocal(userId, existing);
-
-  return normalized;
 }
 
 export async function deleteMilestone(userId: string, id: string): Promise<void> {
@@ -1377,11 +1380,87 @@ export async function deleteMilestone(userId: string, id: string): Promise<void>
     .eq('id', id)
     .eq('user_id', userId);
 
-  const existing = readMilestonesFromLocal(userId);
-  writeMilestonesToLocal(userId, existing.filter((m) => m.id !== id));
+  if (error) {
+    console.error('Error deleting milestone:', error);
+  }
+}
+
+// Release notes & feature requests
+export async function getReleaseNotes(userId: string): Promise<ReleaseNoteItem[]> {
+  const { data, error } = await supabase
+    .from('release_notes')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
 
   if (error) {
-    console.warn('Milestone remote delete failed, local delete applied:', error.message);
+    console.error('Error fetching release notes:', error);
+    return [];
+  }
+
+  return ((data || []) as any[]).map((r) => ({
+    id: r.id,
+    date: r.date || '',
+    note: r.note || '',
+    createdAt: r.created_at || Date.now(),
+  }));
+}
+
+export async function addReleaseNote(userId: string, note: string, date: string): Promise<void> {
+  const payload = {
+    id: generateId(),
+    user_id: userId,
+    date,
+    note,
+    created_at: Date.now(),
+  };
+  const { error } = await supabase.from('release_notes').insert(payload);
+  if (error) {
+    console.error('Error adding release note:', error);
+  }
+}
+
+export async function getFeatureRequests(userId: string): Promise<FeatureRequestItem[]> {
+  const { data, error } = await supabase
+    .from('feature_requests')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching feature requests:', error);
+    return [];
+  }
+
+  return ((data || []) as any[]).map((f) => ({
+    id: f.id,
+    text: f.text || '',
+    createdAt: f.created_at || Date.now(),
+  }));
+}
+
+export async function saveFeatureRequest(userId: string, item: { id?: string; text: string }): Promise<void> {
+  const payload = {
+    id: item.id || generateId(),
+    user_id: userId,
+    text: item.text,
+    created_at: Date.now(),
+  };
+  const { error } = await supabase.from('feature_requests').upsert(payload, { onConflict: 'id' });
+  if (error) {
+    console.error('Error saving feature request:', error);
+  }
+}
+
+export async function deleteFeatureRequest(userId: string, id: string): Promise<void> {
+  const { error } = await supabase
+    .from('feature_requests')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('Error deleting feature request:', error);
   }
 }
 
@@ -1396,8 +1475,10 @@ export async function exportUserData(userId: string): Promise<DataExportV1> {
     stepGoalsRes,
     tripsRes,
     raceGoalsRes,
-    extraEventGoals,
-    milestones,
+    eventGoalsRes,
+    milestonesRes,
+    releaseNotesRes,
+    featureRequestsRes,
   ] = await Promise.all([
     supabase.from('my_foods').select('*').eq('user_id', userId),
     supabase.from('food_logs').select('*').eq('user_id', userId),
@@ -1407,8 +1488,10 @@ export async function exportUserData(userId: string): Promise<DataExportV1> {
     supabase.from('step_goals').select('*').eq('user_id', userId),
     supabase.from('trips').select('*').eq('user_id', userId),
     supabase.from('race_goals').select('*').eq('user_id', userId),
-    Promise.resolve(readEventGoalsFromLocal(userId)),
-    getMilestones(userId),
+    supabase.from('event_goals').select('*').eq('user_id', userId),
+    supabase.from('milestones').select('*').eq('user_id', userId),
+    supabase.from('release_notes').select('*').eq('user_id', userId),
+    supabase.from('feature_requests').select('*').eq('user_id', userId),
   ]);
 
   const errors = [
@@ -1420,6 +1503,10 @@ export async function exportUserData(userId: string): Promise<DataExportV1> {
     stepGoalsRes.error,
     tripsRes.error,
     raceGoalsRes.error,
+    eventGoalsRes.error,
+    milestonesRes.error,
+    releaseNotesRes.error,
+    featureRequestsRes.error,
   ].filter(Boolean);
 
   if (errors.length > 0) {
@@ -1439,8 +1526,10 @@ export async function exportUserData(userId: string): Promise<DataExportV1> {
       step_goals: stepGoalsRes.data || [],
       trips: tripsRes.data || [],
       race_goals: raceGoalsRes.data || [],
-      event_goals: extraEventGoals || [],
-      milestones: milestones || [],
+      event_goals: eventGoalsRes.data || [],
+      milestones: milestonesRes.data || [],
+      release_notes: releaseNotesRes.data || [],
+      feature_requests: featureRequestsRes.data || [],
     },
   };
 }
@@ -1466,6 +1555,8 @@ export async function importUserData(
   const stepGoals = toRows(data.step_goals);
   const trips = toRows(data.trips);
   const raceGoals = toRows(data.race_goals);
+  const releaseNotes = toRows(data.release_notes);
+  const featureRequests = toRows(data.feature_requests);
   const eventGoals = Array.isArray((data as any).event_goals) ? (data as any).event_goals : [];
   const milestones = Array.isArray((data as any).milestones) ? (data as any).milestones : [];
 
@@ -1478,38 +1569,15 @@ export async function importUserData(
     stepGoals.length ? supabase.from('step_goals').upsert(stepGoals, { onConflict: 'user_id' }) : Promise.resolve({ error: null } as any),
     trips.length ? supabase.from('trips').upsert(trips, { onConflict: 'id' }) : Promise.resolve({ error: null } as any),
     raceGoals.length ? supabase.from('race_goals').upsert(raceGoals, { onConflict: 'user_id' }) : Promise.resolve({ error: null } as any),
+    eventGoals.length ? supabase.from('event_goals').upsert(toRows(eventGoals), { onConflict: 'id' }) : Promise.resolve({ error: null } as any),
+    milestones.length ? supabase.from('milestones').upsert(toRows(milestones), { onConflict: 'id' }) : Promise.resolve({ error: null } as any),
+    releaseNotes.length ? supabase.from('release_notes').upsert(releaseNotes, { onConflict: 'id' }) : Promise.resolve({ error: null } as any),
+    featureRequests.length ? supabase.from('feature_requests').upsert(featureRequests, { onConflict: 'id' }) : Promise.resolve({ error: null } as any),
   ]);
 
   const hasErrors = results.some((res: any) => res.error);
   if (hasErrors) {
     throw new Error('Import failed for one or more tables');
-  }
-
-  let importedMilestones = 0;
-  for (const milestone of milestones) {
-    if (!milestone || typeof milestone !== 'object') continue;
-    await saveMilestone(userId, {
-      id: milestone.id,
-      title: milestone.title || '',
-      date: milestone.date || getToday(),
-      notes: milestone.notes || '',
-      done: !!milestone.done,
-    });
-    importedMilestones += 1;
-  }
-
-  if (eventGoals.length > 0) {
-    const normalized = eventGoals
-      .filter((g: any) => g && typeof g === 'object')
-      .map((g: any) => ({
-        id: g.id || generateId(),
-        eventName: g.eventName || g.event_name || '',
-        raceDate: g.raceDate || g.race_date || getToday(),
-        targetWeight: Number(g.targetWeight ?? g.target_weight ?? 80),
-        weeklyTarget: Number(g.weeklyTarget ?? g.weekly_target ?? 0.5),
-        createdAt: Number(g.createdAt ?? g.created_at ?? Date.now()),
-      }));
-    writeEventGoalsToLocal(userId, normalized);
   }
 
   return {
@@ -1522,8 +1590,10 @@ export async function importUserData(
       stepGoals.length +
       trips.length +
       raceGoals.length +
+      releaseNotes.length +
+      featureRequests.length +
       eventGoals.length +
-      importedMilestones,
+      milestones.length,
   };
 }
 

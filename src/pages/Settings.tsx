@@ -2,7 +2,7 @@ import { useState, useEffect, ReactNode, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { getGoals, updateGoals, getRaceGoal, saveRaceGoal, getDaysUntilRace, changePassword, getStepGoal, saveStepGoal as saveStepGoalApi, exportUserData, importUserData, getEventGoals, saveEventGoalItem, deleteEventGoalItem, setPrimaryEventGoal, EventGoalItem } from '../lib/api';
+import { getGoals, updateGoals, getRaceGoal, saveRaceGoal, getDaysUntilRace, changePassword, getStepGoal, saveStepGoal as saveStepGoalApi, exportUserData, importUserData, getEventGoals, saveEventGoalItem, deleteEventGoalItem, setPrimaryEventGoal, EventGoalItem, getReleaseNotes, addReleaseNote as addReleaseNoteApi, getFeatureRequests, saveFeatureRequest as saveFeatureRequestApi, deleteFeatureRequest as deleteFeatureRequestApi, ReleaseNoteItem, FeatureRequestItem } from '../lib/api';
 import { formatDateDDMMYYYY } from '../lib/date';
 import MaterialIcon from '../components/MaterialIcon';
 
@@ -112,19 +112,19 @@ export default function Settings() {
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
-  const [releaseNotes, setReleaseNotes] = useState<{ date: string; note: string }[]>([
-    { date: '30.03.2026', note: 'v1.2.0 - Event goals list (add/edit/delete), improved milestones flow, and safer race projection' },
-    { date: '29.03.2026', note: 'v1.1.0 - Account login (email/password) across devices' },
-    { date: '29.03.2026', note: 'v1.0.0 - MacroMetric official first release' },
-    { date: '28.03.2026', note: 'v2.0.002 - Event Goal with name, Check-in notes, History Goals tab' },
-    { date: '28.03.2026', note: 'v2.0.001 - Edit/Delete My Foods, No duplicate add' },
-    { date: '27.03.2026', note: 'Added OCR nutrition label scanner (Scan Label)' },
-    { date: '27.03.2026', note: 'Added Import Foods with all fields' },
-    { date: '27.03.2026', note: 'Added collapsible sections and About page' },
-    { date: '27.03.2026', note: 'Added password protection' },
+  const [releaseNotes, setReleaseNotes] = useState<ReleaseNoteItem[]>([
+    { id: 'seed-20260330-v120', date: '30.03.2026', note: 'v1.2.0 - Event goals list (add/edit/delete), improved milestones flow, and safer race projection', createdAt: 202603300000 },
+    { id: 'seed-20260329-v110', date: '29.03.2026', note: 'v1.1.0 - Account login (email/password) across devices', createdAt: 202603290000 },
+    { id: 'seed-20260329-v100', date: '29.03.2026', note: 'v1.0.0 - MacroMetric official first release', createdAt: 202603290001 },
+    { id: 'seed-20260328-v2002', date: '28.03.2026', note: 'v2.0.002 - Event Goal with name, Check-in notes, History Goals tab', createdAt: 202603280000 },
+    { id: 'seed-20260328-v2001', date: '28.03.2026', note: 'v2.0.001 - Edit/Delete My Foods, No duplicate add', createdAt: 202603280001 },
+    { id: 'seed-20260327-ocr', date: '27.03.2026', note: 'Added OCR nutrition label scanner (Scan Label)', createdAt: 202603270000 },
+    { id: 'seed-20260327-import', date: '27.03.2026', note: 'Added Import Foods with all fields', createdAt: 202603270001 },
+    { id: 'seed-20260327-ui', date: '27.03.2026', note: 'Added collapsible sections and About page', createdAt: 202603270002 },
+    { id: 'seed-20260327-password', date: '27.03.2026', note: 'Added password protection', createdAt: 202603270003 },
   ]);
 
-  const [featureRequests, setFeatureRequests] = useState<{ id: string; text: string }[]>([]);
+  const [featureRequests, setFeatureRequests] = useState<FeatureRequestItem[]>([]);
   const [newFeature, setNewFeature] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
@@ -140,45 +140,29 @@ export default function Settings() {
     }
   }, [userId]);
 
-  useEffect(() => {
-    const savedNotes = localStorage.getItem('macrometric_release_notes');
-    if (savedNotes) {
-      setReleaseNotes(JSON.parse(savedNotes));
-    }
-    const savedFeatures = localStorage.getItem('macrometric_feature_requests');
-    if (savedFeatures) {
-      setFeatureRequests(JSON.parse(savedFeatures));
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('macrometric_release_notes', JSON.stringify(releaseNotes));
-  }, [releaseNotes]);
-
-  useEffect(() => {
-    localStorage.setItem('macrometric_feature_requests', JSON.stringify(featureRequests));
-  }, [featureRequests]);
-
-  const addReleaseNote = (note: string) => {
+  const addReleaseNote = async (note: string) => {
+    if (!userId) return;
     const now = new Date();
     const dd = String(now.getDate()).padStart(2, '0');
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const yyyy = now.getFullYear();
     const dateStr = `${dd}.${mm}.${yyyy}`;
-    
-    const updated = [{ date: dateStr, note }, ...releaseNotes];
-    setReleaseNotes(updated);
+    await addReleaseNoteApi(userId, note, dateStr);
+    const notes = await getReleaseNotes(userId);
+    setReleaseNotes(notes);
   };
 
   const loadData = async () => {
     if (!userId) return;
     setLoading(true);
     
-    const [stored, raceGoalData, stepGoalData, eventGoalsData] = await Promise.all([
+    const [stored, raceGoalData, stepGoalData, eventGoalsData, releaseNotesData, featureRequestsData] = await Promise.all([
       getGoals(userId),
       getRaceGoal(userId),
       getStepGoal(userId),
       getEventGoals(userId),
+      getReleaseNotes(userId),
+      getFeatureRequests(userId),
     ]);
     
     setCalories(stored.calories);
@@ -202,6 +186,8 @@ export default function Settings() {
     setRaceTargetWeight(raceGoalData.targetWeight);
     setRaceWeeklyTarget(raceGoalData.weeklyTarget);
     setEventGoals(eventGoalsData);
+    setReleaseNotes(releaseNotesData.length > 0 ? releaseNotesData : releaseNotes);
+    setFeatureRequests(featureRequestsData);
     setGoalFormName('');
     setGoalFormDate(normalizeToDisplayDate(raceGoalData.raceDate));
     setGoalFormTargetWeight(raceGoalData.targetWeight);
@@ -365,9 +351,11 @@ export default function Settings() {
     setCarbsPct(normalized.carbs);
   };
 
-  const addFeatureRequest = () => {
+  const addFeatureRequest = async () => {
+    if (!userId) return;
     if (!newFeature.trim()) return;
-    const updated = [...featureRequests, { id: Date.now().toString(), text: newFeature.trim() }];
+    await saveFeatureRequestApi(userId, { text: newFeature.trim() });
+    const updated = await getFeatureRequests(userId);
     setFeatureRequests(updated);
     setNewFeature('');
   };
@@ -377,9 +365,11 @@ export default function Settings() {
     setEditText(text);
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
+    if (!userId) return;
     if (!editingId || !editText.trim()) return;
-    const updated = featureRequests.map(f => f.id === editingId ? { ...f, text: editText.trim() } : f);
+    await saveFeatureRequestApi(userId, { id: editingId, text: editText.trim() });
+    const updated = await getFeatureRequests(userId);
     setFeatureRequests(updated);
     setEditingId(null);
     setEditText('');
@@ -390,8 +380,10 @@ export default function Settings() {
     setEditText('');
   };
 
-  const deleteFeatureRequest = (id: string) => {
-    const updated = featureRequests.filter(f => f.id !== id);
+  const deleteFeatureRequest = async (id: string) => {
+    if (!userId) return;
+    await deleteFeatureRequestApi(userId, id);
+    const updated = await getFeatureRequests(userId);
     setFeatureRequests(updated);
   };
 
