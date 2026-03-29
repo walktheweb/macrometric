@@ -19,6 +19,7 @@ export interface FoodLog extends Food {
   id: string;
   foodId?: string;
   quantity?: number;
+  date?: string;
   baseMacros?: {
     calories: number;
     protein: number;
@@ -232,7 +233,7 @@ export async function addLog(userId: string, food: Partial<FoodLog>): Promise<Fo
     package_weight: food.packageWeight,
     package_count: food.packageCount,
     quantity: food.quantity || 1,
-    date: getToday(),
+    date: food.date || getToday(),
     created_at: Date.now(),
   };
   
@@ -631,8 +632,6 @@ export async function updateMyFoodAndLogs(
       serving: food.serving,
       serving_size: food.servingSize,
       net_carbs: food.netCarbs,
-      package_weight: food.packageWeight,
-      package_count: food.packageCount,
     };
   });
   

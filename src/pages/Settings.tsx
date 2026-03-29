@@ -746,13 +746,13 @@ export default function Settings() {
       <CollapsibleSection title="Maintenance" icon="🛠️">
         <div className="space-y-3">
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Open the maintenance view for bulk search/review/edit/delete on My Foods.
+            Open the maintenance view for bulk search/review/edit/delete on your foods.
           </p>
           <button
             onClick={() => navigate('/my-foods')}
             className="w-full py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors"
           >
-            Open My Foods Manager
+            Open Food Manager
           </button>
           <button
             onClick={() => navigate('/food-entries')}
