@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 
 interface AuthContextType {
   userId: string | null;
+  email: string | null;
   loading: boolean;
   refresh: () => void;
 }
@@ -11,31 +12,23 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-
-  const signIn = async () => {
-    try {
-      const { data, error } = await supabase.auth.signInAnonymously();
-      if (error) throw error;
-      if (data.user) {
-        setUserId(data.user.id);
-      }
-    } catch (error) {
-      console.error('Error signing in anonymously:', error);
-    }
-  };
 
   const checkUser = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         setUserId(user.id);
+        setEmail(user.email || null);
       } else {
-        await signIn();
+        setUserId(null);
+        setEmail(null);
       }
     } catch (error) {
       console.error('Error checking user:', error);
-      await signIn();
+      setUserId(null);
+      setEmail(null);
     } finally {
       setLoading(false);
     }
@@ -43,6 +36,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     checkUser();
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      const user = session?.user || null;
+      setUserId(user?.id || null);
+      setEmail(user?.email || null);
+      setLoading(false);
+    });
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   const refresh = () => {
@@ -50,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ userId, loading, refresh }}>
+    <AuthContext.Provider value={{ userId, email, loading, refresh }}>
       {children}
     </AuthContext.Provider>
   );

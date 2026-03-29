@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider } from './contexts/AuthContext';
-import { isAuthenticated } from './lib/api';
+import { supabase } from './lib/supabase';
 import Dashboard from './pages/Dashboard';
 import FoodLog from './pages/FoodLog';
 import History from './pages/History';
@@ -18,30 +18,20 @@ export default function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [checking, setChecking] = useState(true);
 
-  const checkAuth = useCallback(() => {
-    setAuthenticated(isAuthenticated());
+  const checkAuth = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    setAuthenticated(!!session?.user);
     setChecking(false);
   }, []);
 
   useEffect(() => {
     checkAuth();
-    
-    // Listen for storage changes (for cross-tab sync)
-    const handleStorageChange = () => {
-      checkAuth();
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    
-    // Custom event for logout
-    const handleLogout = () => {
-      checkAuth();
-    };
-    window.addEventListener('auth-change', handleLogout);
-    
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthenticated(!!session?.user);
+      setChecking(false);
+    });
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('auth-change', handleLogout);
+      authListener.subscription.unsubscribe();
     };
   }, [checkAuth]);
 

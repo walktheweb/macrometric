@@ -1219,26 +1219,19 @@ export async function importUserData(
 
 // Password / Authentication
 export function isAuthenticated(): boolean {
-  return localStorage.getItem('macrometric_authenticated') === 'true';
+  // Legacy helper kept for compatibility with older code paths.
+  // The app now relies on Supabase session state.
+  return true;
 }
 
-export function logout(): void {
-  localStorage.removeItem('macrometric_authenticated');
+export async function logout(): Promise<void> {
+  await supabase.auth.signOut();
 }
 
-export async function verifyPassword(password: string): Promise<boolean> {
+export async function verifyPassword(_password: string): Promise<boolean> {
   try {
-    const { data, error } = await supabase
-      .from('app_settings')
-      .select('app_password')
-      .eq('id', 'main')
-      .single();
-    
-    if (error || !data) {
-      return false;
-    }
-    
-    return data.app_password === password;
+    const { data } = await supabase.auth.getUser();
+    return !!data.user;
   } catch {
     return false;
   }
@@ -1246,21 +1239,24 @@ export async function verifyPassword(password: string): Promise<boolean> {
 
 export async function changePassword(currentPassword: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const isValid = await verifyPassword(currentPassword);
-    if (!isValid) {
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user?.email) {
+      return { success: false, error: 'Not logged in' };
+    }
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: userData.user.email,
+      password: currentPassword,
+    });
+
+    if (signInError) {
       return { success: false, error: 'Current password is incorrect' };
     }
 
-    const { error } = await supabase
-      .from('app_settings')
-      .update({ 
-        app_password: newPassword,
-        updated_at: Date.now()
-      })
-      .eq('id', 'main');
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
 
     if (error) {
-      return { success: false, error: 'Failed to update password' };
+      return { success: false, error: error.message || 'Failed to update password' };
     }
 
     return { success: true };

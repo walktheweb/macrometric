@@ -3,47 +3,78 @@ import { supabase } from '../lib/supabase';
 import MaterialIcon from '../components/MaterialIcon';
 
 const getVersionString = () => {
-  return '1.0.0';
+  return '1.1.0';
 };
 
 export default function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  const validate = () => {
+    if (!email.trim() || !password.trim()) {
+      setError('Please enter email and password');
+      return false;
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return false;
+    }
+    if (mode === 'signup' && password !== confirmPassword) {
+      setError('Passwords do not match');
+      return false;
+    }
+    return true;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!password.trim()) {
-      setError('Please enter password');
-      return;
-    }
+    setError('');
+    setMessage('');
+    if (!validate()) return;
 
     setLoading(true);
-    setError('');
 
     try {
-      const { data, error: fetchError } = await supabase
-        .from('app_settings')
-        .select('app_password')
-        .eq('id', 'main')
-        .single();
+      if (mode === 'signin') {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
 
-      if (fetchError) {
-        setError('Unable to verify password. Please try again.');
-        setLoading(false);
-        return;
-      }
+        if (signInError) {
+          setError(signInError.message || 'Login failed');
+          setLoading(false);
+          return;
+        }
 
-      if (data && data.app_password === password) {
-        localStorage.setItem('macrometric_authenticated', 'true');
         onAuthenticated();
       } else {
-        setError('Incorrect password. Please try again.');
-        setPassword('');
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+        });
+
+        if (signUpError) {
+          setError(signUpError.message || 'Sign up failed');
+          setLoading(false);
+          return;
+        }
+
+        if (data.session?.user) {
+          onAuthenticated();
+        } else {
+          setMessage('Account created. Check your email to confirm, then log in.');
+          setMode('signin');
+        }
       }
-    } catch (err) {
-      setError('Connection error. Please check your internet.');
+    } catch {
+      setError('Connection error. Please try again.');
     }
 
     setLoading(false);
@@ -55,21 +86,31 @@ export default function LoginScreen({ onAuthenticated }: { onAuthenticated: () =
         <div className="bg-white rounded-3xl shadow-2xl p-8">
           <div className="text-center mb-8">
             <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <MaterialIcon name="lock" className="text-[34px] text-blue-600" />
+              <MaterialIcon name="person" className="text-[34px] text-blue-600" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900">MacroMetric</h1>
-            <p className="text-gray-500 mt-2">Enter password to continue</p>
+            <p className="text-gray-500 mt-2">
+              {mode === 'signin' ? 'Login to your account' : 'Create your account'}
+            </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email address"
+              autoFocus
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
+            />
+
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password"
-                autoFocus
-                className="w-full px-4 py-4 text-lg border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors text-center tracking-widest"
+                placeholder="Password"
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
               />
               <button
                 type="button"
@@ -80,29 +121,53 @@ export default function LoginScreen({ onAuthenticated }: { onAuthenticated: () =
               </button>
             </div>
 
+            {mode === 'signup' && (
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm password"
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
+              />
+            )}
+
             {error && (
               <div className="text-red-500 text-sm text-center bg-red-50 py-2 rounded-lg">
                 {error}
               </div>
             )}
 
+            {message && (
+              <div className="text-green-600 text-sm text-center bg-green-50 py-2 rounded-lg">
+                {message}
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={loading}
-              className={`w-full py-4 text-lg font-semibold rounded-xl transition-colors ${
+              className={`w-full py-3 text-lg font-semibold rounded-xl transition-colors ${
                 loading
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   : 'bg-blue-600 text-white hover:bg-blue-700'
               }`}
             >
-              {loading ? 'Verifying...' : 'Unlock'}
+              {loading ? 'Please wait...' : mode === 'signin' ? 'Login' : 'Create account'}
             </button>
           </form>
 
-          <p className="text-xs text-gray-400 text-center mt-6">
-            Protected by password authentication
-          </p>
-          <p className="text-xs text-gray-300 text-center mt-2">
+          <button
+            onClick={() => {
+              setMode(mode === 'signin' ? 'signup' : 'signin');
+              setError('');
+              setMessage('');
+            }}
+            className="w-full mt-3 text-sm text-blue-600 hover:text-blue-700"
+          >
+            {mode === 'signin' ? 'No account yet? Create one' : 'Already have an account? Login'}
+          </button>
+
+          <p className="text-xs text-gray-300 text-center mt-4">
             v{getVersionString()}
           </p>
         </div>
@@ -110,4 +175,3 @@ export default function LoginScreen({ onAuthenticated }: { onAuthenticated: () =
     </div>
   );
 }
-

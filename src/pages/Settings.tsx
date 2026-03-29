@@ -7,7 +7,7 @@ import { formatDateDDMMYYYY } from '../lib/date';
 import MaterialIcon from '../components/MaterialIcon';
 
 const getVersionString = () => {
-  return '1.0.0';
+  return '1.1.0';
 };
 
 const normalizeToIsoDate = (value?: string | null): string => {
@@ -107,6 +107,7 @@ export default function Settings() {
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
   const [releaseNotes, setReleaseNotes] = useState<{ date: string; note: string }[]>([
+    { date: '29.03.2026', note: 'v1.1.0 - Account login (email/password) across devices' },
     { date: '29.03.2026', note: 'v1.0.0 - MacroMetric official first release' },
     { date: '28.03.2026', note: 'v2.0.002 - Event Goal with name, Check-in notes, History Goals tab' },
     { date: '28.03.2026', note: 'v2.0.001 - Edit/Delete My Foods, No duplicate add' },
@@ -252,8 +253,8 @@ export default function Settings() {
       return;
     }
     
-    if (newPassword.length < 4) {
-      setPasswordError('Password must be at least 4 characters');
+    if (newPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters');
       return;
     }
     
@@ -271,9 +272,9 @@ export default function Settings() {
     }
   };
 
-  const handleLogout = () => {
-    if (confirm('Are you sure you want to logout? You will need to enter password again.')) {
-      logout();
+  const handleLogout = async () => {
+    if (confirm('Are you sure you want to logout?')) {
+      await logout();
       window.dispatchEvent(new Event('auth-change'));
     }
   };
@@ -862,7 +863,7 @@ export default function Settings() {
         ) : (
           <div className="space-y-4">
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Your app is protected with a password.
+              Your account is protected with your login password.
             </p>
             <div className="flex gap-3">
               <button
