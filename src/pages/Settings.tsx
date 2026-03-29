@@ -2,7 +2,7 @@ import { useState, useEffect, ReactNode, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { getGoals, updateGoals, getRaceGoal, saveRaceGoal, getDaysUntilRace, changePassword, logout, getStepGoal, saveStepGoal as saveStepGoalApi, exportUserData, importUserData } from '../lib/api';
+import { getGoals, updateGoals, getRaceGoal, saveRaceGoal, getDaysUntilRace, changePassword, getStepGoal, saveStepGoal as saveStepGoalApi, exportUserData, importUserData } from '../lib/api';
 import { formatDateDDMMYYYY } from '../lib/date';
 import MaterialIcon from '../components/MaterialIcon';
 
@@ -74,7 +74,7 @@ function CollapsibleSection({ title, icon, defaultExpanded = false, gradient = f
 
 export default function Settings() {
   const navigate = useNavigate();
-  const { userId } = useAuth();
+  const { userId, email } = useAuth();
   const { theme, setTheme } = useTheme();
   const [calories, setCalories] = useState(1500);
   const [fatPct, setFatPct] = useState(75);
@@ -269,13 +269,6 @@ export default function Settings() {
       setTimeout(() => setPasswordSuccess(false), 3000);
     } else {
       setPasswordError(result.error || 'Failed to change password');
-    }
-  };
-
-  const handleLogout = async () => {
-    if (confirm('Are you sure you want to logout?')) {
-      await logout();
-      window.dispatchEvent(new Event('auth-change'));
     }
   };
 
@@ -796,6 +789,9 @@ export default function Settings() {
 
       {/* Password */}
       <CollapsibleSection title="Password" icon="lock">
+        <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg text-sm text-gray-700 dark:text-gray-200">
+          Logged in as: <span className="font-semibold">{email || 'Unknown account'}</span>
+        </div>
         {passwordSuccess && (
           <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-lg text-center">
             Password changed successfully!
@@ -868,15 +864,9 @@ export default function Settings() {
             <div className="flex gap-3">
               <button
                 onClick={() => setShowPasswordForm(true)}
-                className="flex-1 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors"
+                className="w-full py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors"
               >
                 Change Password
-              </button>
-              <button
-                onClick={handleLogout}
-                className="flex-1 py-3 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-semibold rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-              >
-                Logout
               </button>
             </div>
           </div>

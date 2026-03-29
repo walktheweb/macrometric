@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { getAuthStorageMode, setAuthStorageMode, supabase } from '../lib/supabase';
 import MaterialIcon from '../components/MaterialIcon';
 
 const getVersionString = () => {
@@ -15,6 +15,7 @@ export default function LoginScreen({ onAuthenticated }: { onAuthenticated: () =
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(getAuthStorageMode() === 'local');
 
   const validate = () => {
     if (!email.trim() || !password.trim()) {
@@ -41,6 +42,8 @@ export default function LoginScreen({ onAuthenticated }: { onAuthenticated: () =
     setLoading(true);
 
     try {
+      setAuthStorageMode(rememberMe ? 'local' : 'session');
+
       if (mode === 'signin') {
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -130,6 +133,16 @@ export default function LoginScreen({ onAuthenticated }: { onAuthenticated: () =
                 className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
               />
             )}
+
+            <label className="flex items-center gap-2 text-sm text-gray-600">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              Remember me
+            </label>
 
             {error && (
               <div className="text-red-500 text-sm text-center bg-red-50 py-2 rounded-lg">
