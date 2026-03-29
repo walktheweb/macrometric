@@ -19,9 +19,14 @@ export default function App() {
   const [checking, setChecking] = useState(true);
 
   const checkAuth = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    setAuthenticated(!!session?.user);
-    setChecking(false);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      setAuthenticated(!!session?.user);
+    } catch {
+      setAuthenticated(false);
+    } finally {
+      setChecking(false);
+    }
   }, []);
 
   useEffect(() => {

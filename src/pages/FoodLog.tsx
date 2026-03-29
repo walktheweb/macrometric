@@ -22,6 +22,7 @@ export default function FoodLog() {
   const [showManualAdd, setShowManualAdd] = useState(false);
   const [showImportInput, setShowImportInput] = useState(false);
   const [showNutritionScanner, setShowNutritionScanner] = useState(false);
+  const [manualMode, setManualMode] = useState<'myFoods' | 'logOnly'>('myFoods');
   const [importText, setImportText] = useState('');
   const [editingFood, setEditingFood] = useState<Food | null>(null);
   const [manualFood, setManualFood] = useState<Food>({
@@ -135,6 +136,7 @@ export default function FoodLog() {
   };
 
   const handleEditFood = (food: Food) => {
+    setManualMode('myFoods');
     setEditingFood(food);
     setManualFood({
       name: food.name,
@@ -152,6 +154,27 @@ export default function FoodLog() {
     setShowManualAdd(true);
   };
 
+  const openManualDialog = (mode: 'myFoods' | 'logOnly') => {
+    setManualMode(mode);
+    setEditingFood(null);
+    setShowImportInput(false);
+    setImportText('');
+    setManualFood({
+      name: '',
+      brand: null,
+      calories: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      netCarbs: 0,
+      serving: '100g',
+      servingSize: 100,
+      packageWeight: 0,
+      packageCount: 0,
+    });
+    setShowManualAdd(true);
+  };
+
   const handleDeleteFood = async (food: Food) => {
     if (!userId || !food.id) return;
     if (!confirm(`Delete "${food.name}" from My Foods?`)) return;
@@ -160,7 +183,7 @@ export default function FoodLog() {
     await search();
   };
 
-  const handleAddToMyFoods = async () => {
+  const handleSaveManualFood = async () => {
     if (!userId) return;
     if (!manualFood.name.trim()) {
       alert('Please enter a food name');
@@ -172,8 +195,13 @@ export default function FoodLog() {
       await updateMyFoodAndLogs(userId, { ...editingFood, ...manualFood, brand: brand || null });
       setEditingFood(null);
     } else {
+      if (manualMode === 'logOnly') {
+        await addLog(userId, { ...rest, brand: brand || null, quantity: 1 });
+        navigate('/');
+        return;
+      }
       const savedFood = await addMyFood(userId, { ...rest, brand: brand || null });
-      await addLog(userId, { ...savedFood, quantity: 1 });
+      await addLog(userId, { ...savedFood, quantity: 1, brand: brand || null });
       navigate('/');
       return;
     }
@@ -404,7 +432,9 @@ export default function FoodLog() {
         
         <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl shadow-sm p-5 border border-blue-100 dark:border-blue-800">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{editingFood ? 'Edit Food' : 'Add to My Foods'}</h2>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+              {editingFood ? 'Edit Food' : manualMode === 'logOnly' ? 'Manual Entry to Log' : 'Add to My Foods'}
+            </h2>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowNutritionScanner(true)}
@@ -576,10 +606,10 @@ export default function FoodLog() {
           </div>
             
           <button
-            onClick={handleAddToMyFoods}
+            onClick={handleSaveManualFood}
             className="w-full py-3 bg-green-500 text-white font-semibold rounded-xl hover:bg-green-600 transition-colors"
           >
-            {editingFood ? 'Update Food' : 'Save to My Foods & Add to Log'}
+            {editingFood ? 'Update Food' : manualMode === 'logOnly' ? 'Add to Log' : 'Save to My Foods & Add to Log'}
           </button>
         </div>
       </div>
@@ -606,10 +636,16 @@ export default function FoodLog() {
           </button>
         </div>
         <button
-          onClick={() => setShowManualAdd(true)}
+          onClick={() => openManualDialog('myFoods')}
           className="w-full mt-3 py-2 text-green-600 dark:text-green-400 font-medium text-sm hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors"
         >
           + Add to My Foods Database
+        </button>
+        <button
+          onClick={() => openManualDialog('logOnly')}
+          className="w-full mt-2 py-2 text-purple-600 dark:text-purple-400 font-medium text-sm hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
+        >
+          + Manual Entry to Log
         </button>
       </div>
       
@@ -779,3 +815,4 @@ export default function FoodLog() {
     </div>
   );
 }
+

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getLogs, getGoals, deleteLog, updateLog, DayLog, Goal, FoodLog, getTodayCheckin, saveCheckin, getCheckins, getTrips, getRaceGoal, getDaysUntilRace, RaceGoal, getStepGoal, Checkin } from '../lib/api';
 import { formatDateDDMMYYYY } from '../lib/date';
@@ -7,14 +7,31 @@ import RaceProgress from '../components/RaceProgress';
 import TripWidget from '../components/TripWidget';
 import MaterialIcon from '../components/MaterialIcon';
 
-function MacroBar({ label, current, goal, color }: { label: string; current: number; goal: number; color: string }) {
-  const percentage = Math.min((current / goal) * 100, 100);
+function MacroBar({
+  label,
+  current,
+  goal,
+  color,
+  splitPercent,
+}: {
+  label: string;
+  current: number;
+  goal: number;
+  color: string;
+  splitPercent?: number;
+}) {
+  const rawPercentage = goal > 0 ? (current / goal) * 100 : 0;
+  const percentage = Math.min(rawPercentage, 100);
+  const displayPct = Math.min(Math.round(rawPercentage), 100);
+  const percentText = typeof splitPercent === 'number' ? splitPercent : displayPct;
   
   return (
     <div className="mb-3">
       <div className="flex justify-between text-sm mb-1">
         <span className="font-medium text-gray-700 dark:text-gray-200">{label}</span>
-        <span className="text-gray-500 dark:text-gray-400">{Math.round(current)} / {goal}g</span>
+        <span className="text-gray-500 dark:text-gray-400">
+          {Math.round(current)} / {goal}g ({percentText}%)
+        </span>
       </div>
       <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
         <div
@@ -75,6 +92,8 @@ function ExplodedPieIcon() {
 }
 
 export default function Dashboard() {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { userId, loading: authLoading } = useAuth();
   const [logs, setLogs] = useState<DayLog | null>(null);
   const [goals, setGoals] = useState<Goal | null>(null);
@@ -114,6 +133,42 @@ export default function Dashboard() {
     ferritin: '',
     notes: '',
   });
+  const editCheckinId = searchParams.get('editCheckin');
+  const fromHistory = searchParams.get('from') === 'history';
+
+  const toCheckinFormData = (item: Checkin) => ({
+    id: item.id || '',
+    date: item.date,
+    checkinTime: item.checkinTime || timeString,
+    weight: item.weight?.toString() || '',
+    steps: item.steps?.toString() || '',
+    ketones: item.ketones?.toString() || '',
+    glucose: item.glucose?.toString() || '',
+    heartRate: item.heartRate?.toString() || '',
+    bpHigh: item.bpHigh?.toString() || '',
+    bpLow: item.bpLow?.toString() || '',
+    saturation: item.saturation?.toString() || '',
+    cholesterol: item.cholesterol?.toString() || '',
+    ferritin: item.ferritin?.toString() || '',
+    notes: item.notes || '',
+  });
+
+  const clearEditCheckinParam = () => {
+    if (!searchParams.get('editCheckin')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('editCheckin');
+    setSearchParams(next, { replace: true });
+  };
+
+  const handleCloseCheckinEditor = () => {
+    const shouldReturnToHistory = fromHistory && !!editingCheckin;
+    setShowCheckin(false);
+    setEditingCheckin(null);
+    clearEditCheckinParam();
+    if (shouldReturnToHistory) {
+      navigate('/history?tab=checkin');
+    }
+  };
 
   useEffect(() => {
     if (userId) {
@@ -139,6 +194,15 @@ export default function Dashboard() {
       window.dispatchEvent(new Event('macrometric:focus-first-input'));
     }
   }, [editingLog, showCheckin]);
+
+  useEffect(() => {
+    if (!editCheckinId || checkins.length === 0) return;
+    const target = checkins.find((c) => c.id === editCheckinId);
+    if (!target) return;
+    setEditingCheckin(target);
+    setCheckinData(toCheckinFormData(target));
+    setShowCheckin(true);
+  }, [editCheckinId, checkins]);
 
   const loadData = async () => {
     if (!userId) return;
@@ -167,24 +231,20 @@ export default function Dashboard() {
     // Get last known weight for BMI
     const weightCheckin = checkinsData?.find(c => c.weight);
     setLastWeightCheckin(weightCheckin || null);
+
+    const targetEditCheckin = editCheckinId
+      ? checkinsData.find((c) => c.id === editCheckinId)
+      : null;
+    if (targetEditCheckin) {
+      setEditingCheckin(targetEditCheckin);
+      setCheckinData(toCheckinFormData(targetEditCheckin));
+      setShowCheckin(true);
+      setLoading(false);
+      return;
+    }
     
     if (todayData) {
-      setCheckinData({
-        id: todayData.id || '',
-        date: todayData.date,
-        checkinTime: todayData.checkinTime || timeString,
-        weight: todayData.weight?.toString() || '',
-        steps: todayData.steps?.toString() || '',
-        ketones: todayData.ketones?.toString() || '',
-        glucose: todayData.glucose?.toString() || '',
-        heartRate: todayData.heartRate?.toString() || '',
-        bpHigh: todayData.bpHigh?.toString() || '',
-        bpLow: todayData.bpLow?.toString() || '',
-        saturation: todayData.saturation?.toString() || '',
-        cholesterol: todayData.cholesterol?.toString() || '',
-        ferritin: todayData.ferritin?.toString() || '',
-        notes: todayData.notes || '',
-      });
+      setCheckinData(toCheckinFormData(todayData));
     } else {
       // Reset to default
       setCheckinData({
@@ -289,6 +349,7 @@ export default function Dashboard() {
     });
     setShowCheckin(false);
     setEditingCheckin(null);
+    clearEditCheckinParam();
     loadData();
   };
 
@@ -310,6 +371,17 @@ export default function Dashboard() {
 
   const goalsData = goals || { calories: 1500, protein: 20, carbs: 5, fat: 75, weight: 83, height: 169 };
   const totals = logs?.totals || { calories: 0, protein: 0, carbs: 0, fat: 0 };
+  const caloriesPct = goalsData.calories > 0 ? Math.round((totals.calories / goalsData.calories) * 100) : 0;
+  const caloriesPctClass =
+    caloriesPct > 100
+      ? 'text-red-600 dark:text-red-400 font-bold'
+      : caloriesPct > 80
+        ? 'text-amber-600 dark:text-amber-400'
+        : 'text-green-600 dark:text-green-400';
+  const totalMacroCalories = (totals.fat * 9) + (totals.protein * 4) + (totals.carbs * 4);
+  const splitFatPct = totalMacroCalories > 0 ? Math.round((totals.fat * 9 / totalMacroCalories) * 100) : 0;
+  const splitProteinPct = totalMacroCalories > 0 ? Math.round((totals.protein * 4 / totalMacroCalories) * 100) : 0;
+  const splitCarbsPct = totalMacroCalories > 0 ? Math.max(0, 100 - splitFatPct - splitProteinPct) : 0;
 
   const dateObj = new Date();
   const dateStr = `${String(dateObj.getDate()).padStart(2, '0')}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${dateObj.getFullYear()}`;
@@ -445,7 +517,7 @@ export default function Dashboard() {
     return (
       <div className="space-y-4">
         <button
-          onClick={() => { setShowCheckin(false); setEditingCheckin(null); }}
+          onClick={handleCloseCheckinEditor}
           className="text-primary-600 dark:text-blue-400 font-medium flex items-center gap-1"
         >
           Back
@@ -455,142 +527,142 @@ export default function Dashboard() {
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-1">
             {editingCheckin ? 'Edit Check-in' : 'Daily Check-in'}
           </h2>
-          <p className="text-gray-500 dark:text-gray-400 mb-4">{dateStr}</p>
+          <p className="text-gray-500 dark:text-gray-400 mb-4">{formatDateDDMMYYYY(checkinData.date)}</p>
           
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Date</label>
-                <input
-                  type="date"
-                  value={checkinData.date}
-                  onChange={(e) => setCheckinData({...checkinData, date: e.target.value})}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Time</label>
-                <input
-                  type="time"
-                  value={checkinData.checkinTime}
-                  onChange={(e) => setCheckinData({...checkinData, checkinTime: e.target.value})}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Steps</label>
-              <input
-                type="number"
-                autoFocus
-                value={checkinData.steps}
-                onChange={(e) => setCheckinData({...checkinData, steps: e.target.value})}
-                placeholder="5000"
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Weight (kg)</label>
-              <input
-                type="number"
-                value={checkinData.weight}
-                onChange={(e) => setCheckinData({...checkinData, weight: e.target.value})}
-                placeholder="83.5"
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-              />
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Ketones (mmol/L)</label>
-                <input
-                  type="number"
-                  value={checkinData.ketones}
-                  onChange={(e) => setCheckinData({...checkinData, ketones: e.target.value})}
-                  placeholder="1.5"
-                  step="0.1"
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Glucose (mg/dL)</label>
-                <input
-                  type="number"
-                  value={checkinData.glucose}
-                  onChange={(e) => setCheckinData({...checkinData, glucose: e.target.value})}
-                  placeholder="95"
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-                />
-              </div>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Heart Rate (bpm)</label>
-              <input
-                type="number"
-                value={checkinData.heartRate}
-                onChange={(e) => setCheckinData({...checkinData, heartRate: e.target.value})}
-                placeholder="72"
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-              />
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">BP Low (mmHg)</label>
-                <input
-                  type="number"
-                  value={checkinData.bpLow}
-                  onChange={(e) => setCheckinData({...checkinData, bpLow: e.target.value})}
-                  placeholder="80"
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">BP High (mmHg)</label>
-                <input
-                  type="number"
-                  value={checkinData.bpHigh}
-                  onChange={(e) => setCheckinData({...checkinData, bpHigh: e.target.value})}
-                  placeholder="120"
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-2">
-              <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-3">Bloodwork</h3>
-              <div className="grid grid-cols-3 gap-4">
+          <div className="space-y-3">
+            <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Check-in Basics</div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Saturation (%)</label>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Date</label>
+                  <input
+                    type="date"
+                    value={checkinData.date}
+                    onChange={(e) => setCheckinData({...checkinData, date: e.target.value})}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Time</label>
+                  <input
+                    type="time"
+                    value={checkinData.checkinTime}
+                    onChange={(e) => setCheckinData({...checkinData, checkinTime: e.target.value})}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Steps</label>
+                  <input
+                    type="number"
+                    autoFocus
+                    value={checkinData.steps}
+                    onChange={(e) => setCheckinData({...checkinData, steps: e.target.value})}
+                    placeholder="5000"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Weight (kg)</label>
+                  <input
+                    type="number"
+                    value={checkinData.weight}
+                    onChange={(e) => setCheckinData({...checkinData, weight: e.target.value})}
+                    placeholder="83.5"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Vitals</div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">BP High</label>
+                  <input
+                    type="number"
+                    value={checkinData.bpHigh}
+                    onChange={(e) => setCheckinData({...checkinData, bpHigh: e.target.value})}
+                    placeholder="120"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">BP Low</label>
+                  <input
+                    type="number"
+                    value={checkinData.bpLow}
+                    onChange={(e) => setCheckinData({...checkinData, bpLow: e.target.value})}
+                    placeholder="80"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Heart Rate</label>
+                  <input
+                    type="number"
+                    value={checkinData.heartRate}
+                    onChange={(e) => setCheckinData({...checkinData, heartRate: e.target.value})}
+                    placeholder="72"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Bloodwork</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Ketones</label>
+                  <input
+                    type="number"
+                    value={checkinData.ketones}
+                    onChange={(e) => setCheckinData({...checkinData, ketones: e.target.value})}
+                    placeholder="1.5"
+                    step="0.1"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Glucose</label>
+                  <input
+                    type="number"
+                    value={checkinData.glucose}
+                    onChange={(e) => setCheckinData({...checkinData, glucose: e.target.value})}
+                    placeholder="95"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Saturation (%)</label>
                   <input
                     type="number"
                     value={checkinData.saturation}
                     onChange={(e) => setCheckinData({...checkinData, saturation: e.target.value})}
                     placeholder="95"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Cholesterol</label>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Cholesterol</label>
                   <input
                     type="number"
                     value={checkinData.cholesterol}
                     onChange={(e) => setCheckinData({...checkinData, cholesterol: e.target.value})}
                     placeholder="180"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Ferritin</label>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Ferritin</label>
                   <input
                     type="number"
                     value={checkinData.ferritin}
                     onChange={(e) => setCheckinData({...checkinData, ferritin: e.target.value})}
                     placeholder="100"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
                   />
                 </div>
               </div>
@@ -688,8 +760,8 @@ export default function Dashboard() {
             Steps
           </span>
           <span className="text-lg font-bold text-green-600 dark:text-green-400">
-            {todaySteps > 0 ? todaySteps.toLocaleString() : '--'}
-            <span className="text-sm font-normal text-gray-500 dark:text-gray-400"> / {stepGoal.toLocaleString()}</span>
+            {todaySteps > 0 ? todaySteps : '--'}
+            <span className="text-sm font-normal text-gray-500 dark:text-gray-400"> / {stepGoal}</span>
           </span>
         </div>
         <div className="h-4 bg-green-200 dark:bg-green-800/50 rounded-full overflow-hidden">
@@ -723,13 +795,14 @@ export default function Dashboard() {
           </h2>
           <span className="text-2xl font-bold text-primary-600 dark:text-blue-400">
             {Math.round(totals.calories)}
-            <span className="text-sm font-normal text-gray-400 dark:text-gray-500"> / {goalsData.calories}</span>
+            <span className="text-sm font-normal text-gray-400 dark:text-gray-500"> / {goalsData.calories} </span>
+            <span className={`text-sm ${caloriesPctClass}`}>({caloriesPct}%)</span>
           </span>
         </div>
         
-        <MacroBar label="Fat" current={totals.fat} goal={goalsData.fat} color="bg-blue-500" />
-        <MacroBar label="Protein" current={totals.protein} goal={goalsData.protein} color="bg-red-500" />
-        <MacroBar label="Carbs" current={totals.carbs} goal={goalsData.carbs} color="bg-amber-500" />
+        <MacroBar label="Fat" current={totals.fat} goal={goalsData.fat} color="bg-blue-500" splitPercent={splitFatPct} />
+        <MacroBar label="Protein" current={totals.protein} goal={goalsData.protein} color="bg-red-500" splitPercent={splitProteinPct} />
+        <MacroBar label="Carbs" current={totals.carbs} goal={goalsData.carbs} color="bg-amber-500" splitPercent={splitCarbsPct} />
       </div>
 
       {todayCheckins.length > 0 && (

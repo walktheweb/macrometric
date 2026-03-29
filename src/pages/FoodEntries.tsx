@@ -66,6 +66,19 @@ export default function FoodEntries() {
     return rows;
   }, [logs, sortKey, sortDir]);
 
+  const totals = useMemo(() => {
+    return sortedLogs.reduce(
+      (acc, log) => {
+        acc.calories += Number(log.calories) || 0;
+        acc.protein += Number(log.protein) || 0;
+        acc.carbs += Number(log.carbs) || 0;
+        acc.fat += Number(log.fat) || 0;
+        return acc;
+      },
+      { calories: 0, protein: 0, carbs: 0, fat: 0 }
+    );
+  }, [sortedLogs]);
+
   const allSelected = sortedLogs.length > 0 && sortedLogs.every(l => selectedIds.has(l.id));
 
   const toggleSort = (key: SortKey) => {
@@ -443,25 +456,6 @@ export default function FoodEntries() {
     <div className="space-y-4">
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-3">
         <div className="flex items-center gap-3 flex-wrap">
-          <Link
-            to={`/my-foods?logDate=${date}`}
-            className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600"
-          >
-            Open Food Manager
-          </Link>
-          <label className="text-sm font-medium text-gray-600 dark:text-gray-300">Date</label>
-          <input
-            data-autofocus-first
-            type="date"
-            value={date}
-            onChange={(e) => {
-              const next = new URLSearchParams(searchParams);
-              next.set('date', e.target.value);
-              setSearchParams(next, { replace: true });
-            }}
-            className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-          />
-          <span className="text-sm text-gray-500 dark:text-gray-400">{logs.length} entries</span>
           <button
             onClick={handleExport}
             disabled={logs.length === 0 || busy}
@@ -490,6 +484,26 @@ export default function FoodEntries() {
             onChange={(e) => handleImport(e.target.files?.[0] || null)}
             className="hidden"
           />
+          <div className="ml-auto flex items-center gap-3">
+            <label className="text-sm font-medium text-gray-600 dark:text-gray-300">Date</label>
+            <input
+              data-autofocus-first
+              type="date"
+              value={date}
+              onChange={(e) => {
+                const next = new URLSearchParams(searchParams);
+                next.set('date', e.target.value);
+                setSearchParams(next, { replace: true });
+              }}
+              className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            />
+            <Link
+              to={`/my-foods?logDate=${date}`}
+              className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600"
+            >
+              Open Food Manager
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -516,9 +530,9 @@ export default function FoodEntries() {
                   <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('quantity')} className="hover:underline">Qty{sortIndicator('quantity')}</button></th>
                   <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('serving')} className="hover:underline">Serving{sortIndicator('serving')}</button></th>
                   <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('calories')} className="hover:underline">kcal{sortIndicator('calories')}</button></th>
-                  <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('protein')} className="hover:underline">P{sortIndicator('protein')}</button></th>
-                  <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('carbs')} className="hover:underline">C{sortIndicator('carbs')}</button></th>
-                  <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('fat')} className="hover:underline">F{sortIndicator('fat')}</button></th>
+                  <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('protein')} className="hover:underline text-red-600 dark:text-red-400">P{sortIndicator('protein')}</button></th>
+                  <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('carbs')} className="hover:underline text-amber-600 dark:text-amber-400">C{sortIndicator('carbs')}</button></th>
+                  <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('fat')} className="hover:underline text-blue-600 dark:text-blue-400">F{sortIndicator('fat')}</button></th>
                   <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('foodId')} className="hover:underline">Food ID{sortIndicator('foodId')}</button></th>
                   <th className="px-2 py-2 font-semibold">Actions</th>
                 </tr>
@@ -605,6 +619,22 @@ export default function FoodEntries() {
                   </tr>
                 ))}
               </tbody>
+              <tfoot className="bg-gray-50 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600">
+                <tr className="font-semibold text-gray-700 dark:text-gray-200">
+                  <td className="px-2 py-2" />
+                  <td className="px-2 py-2 whitespace-nowrap">Totals ({sortedLogs.length} entries)</td>
+                  <td className="px-2 py-2" />
+                  <td className="px-2 py-2" />
+                  <td className="px-2 py-2" />
+                  <td className="px-2 py-2" />
+                  <td className="px-2 py-2 whitespace-nowrap">{Math.round(totals.calories)}</td>
+                  <td className="px-2 py-2 whitespace-nowrap text-red-600 dark:text-red-400">{Math.round(totals.protein)}g</td>
+                  <td className="px-2 py-2 whitespace-nowrap text-amber-600 dark:text-amber-400">{Math.round(totals.carbs)}g</td>
+                  <td className="px-2 py-2 whitespace-nowrap text-blue-600 dark:text-blue-400">{Math.round(totals.fat)}g</td>
+                  <td className="px-2 py-2" />
+                  <td className="px-2 py-2" />
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>

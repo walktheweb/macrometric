@@ -4,11 +4,9 @@ import MaterialIcon from './MaterialIcon';
 import { logout } from '../lib/api';
 
 const navItems = [
-  { to: '/', label: 'Today', icon: 'monitoring' },
-  { to: '/trips', label: 'Cycling', icon: 'directions_bike' },
-  { to: '/add', label: 'Add Food', icon: 'add_circle' },
+  { to: '/trips', label: 'Cycling', icon: 'add_circle' },
+  { to: '/add', label: 'Food', icon: 'directions_bike' },
   { to: '/history', label: 'History', icon: 'history' },
-  { to: '/settings', label: 'Settings', icon: 'settings' },
 ];
 
 export default function Layout() {
@@ -16,7 +14,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const isMaintenancePage = location.pathname === '/my-foods' || location.pathname === '/food-entries';
   const mainRef = useRef<HTMLElement | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const focusFirstInput = () => {
     if (!mainRef.current) return;
@@ -34,7 +32,7 @@ export default function Layout() {
   }, [location.pathname]);
 
   useEffect(() => {
-    setMenuOpen(false);
+    setMoreOpen(false);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -57,7 +55,7 @@ export default function Layout() {
 
   const handleLogout = async () => {
     await logout();
-    setMenuOpen(false);
+    setMoreOpen(false);
     window.dispatchEvent(new Event('auth-change'));
   };
   
@@ -65,61 +63,76 @@ export default function Layout() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
-          <button
-            onClick={goHome}
-            className="flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-gray-100 transition-colors"
-            title="Go to homepage"
-          >
-            <div className="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center">
-              <span className="text-white font-bold text-sm">M</span>
-            </div>
-            <span className="font-semibold text-gray-800">MacroMetric</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={goHome}
+              className="rounded-full p-0.5 hover:bg-gray-100 transition-colors"
+              title="Go to homepage"
+              aria-label="Go to homepage"
+            >
+              <div className="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center">
+                <span className="text-white font-bold text-sm">M</span>
+              </div>
+            </button>
+            {navItems.map(({ to, label, icon }) => (
+              <NavLink
+                key={to}
+                to={to}
+                title={label}
+                className={({ isActive }) =>
+                  `flex items-center justify-center p-2 rounded-lg transition-colors ${
+                    isActive
+                      ? 'text-primary-600 bg-primary-50'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`
+                }
+              >
+                <MaterialIcon name={icon} className="text-[22px]" />
+              </NavLink>
+            ))}
+          </div>
           <div
             className="relative"
-            onMouseEnter={() => setMenuOpen(true)}
-            onMouseLeave={() => setMenuOpen(false)}
+            onMouseEnter={() => setMoreOpen(true)}
+            onMouseLeave={() => setMoreOpen(false)}
           >
             <button
-              className="p-2 rounded-lg text-gray-600 hover:text-gray-800 hover:bg-gray-100 transition-colors"
-              aria-label="Open menu"
-              title="Menu"
+              type="button"
+              onClick={() => setMoreOpen((prev) => !prev)}
+              title="Options"
+              aria-label="Open options"
+              className="flex items-center justify-center p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
             >
-              <MaterialIcon name={menuOpen ? 'close' : 'menu'} className="text-[24px]" />
+              <MaterialIcon name={moreOpen ? 'close' : 'menu'} className="text-[24px]" />
             </button>
-            {menuOpen && (
-              <div className="absolute right-full top-0 z-20 w-52 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-                {navItems.map(({ to, label, icon }) => (
-                  <NavLink
-                    key={to}
-                    to={to}
-                    onClick={() => {
-                      if (to === '/' && location.pathname === '/') {
-                        window.dispatchEvent(new Event('macrometric:today-nav'));
-                      }
-                      setMenuOpen(false);
-                    }}
-                    className={({ isActive }) =>
-                      `flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
-                        isActive
-                          ? 'text-primary-600 bg-primary-50'
-                          : 'text-gray-700 hover:bg-gray-100'
-                      }`
-                    }
-                  >
-                    <MaterialIcon name={icon} className="text-[20px]" />
-                    <span>{label}</span>
-                  </NavLink>
-                ))}
-                <button
-                  onClick={handleLogout}
-                  className="w-full border-t border-gray-200 flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                >
-                  <MaterialIcon name="logout" className="text-[20px]" />
-                  <span>Logout</span>
-                </button>
-              </div>
-            )}
+            <div
+              className={`absolute right-0 top-0 z-20 w-40 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden transition-all duration-200 ${
+                moreOpen ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-2 pointer-events-none'
+              }`}
+            >
+              <NavLink
+                to="/settings"
+                onClick={() => setMoreOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                    isActive
+                      ? 'text-primary-600 bg-primary-50'
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`
+                }
+              >
+                <MaterialIcon name="settings" className="text-[18px]" />
+                <span>Settings</span>
+              </NavLink>
+              <button
+                onClick={handleLogout}
+                className="w-full border-t border-gray-200 flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+              >
+                <MaterialIcon name="logout" className="text-[18px]" />
+                <span>Logout</span>
+              </button>
+            </div>
           </div>
         </div>
       </header>

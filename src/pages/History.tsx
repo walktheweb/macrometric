@@ -1,18 +1,22 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getHistory, DayLog, getCheckins, getRaceGoal, RaceGoal, deleteCheckin, Checkin } from '../lib/api';
 import { formatDateDDMMYYYY } from '../lib/date';
 import MaterialIcon from '../components/MaterialIcon';
 
 export default function History() {
+  const [searchParams] = useSearchParams();
   const { userId, loading: authLoading } = useAuth();
   const [history, setHistory] = useState<Record<string, DayLog>>({});
   const [checkins, setCheckins] = useState<Checkin[]>([]);
   const [raceGoal, setRaceGoal] = useState<RaceGoal | null>(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(7);
-  const [activeTab, setActiveTab] = useState<'food' | 'checkin' | 'goals'>('food');
+  const initialTab = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState<'food' | 'checkin' | 'goals'>(
+    initialTab === 'checkin' || initialTab === 'goals' ? initialTab : 'food'
+  );
   const [expandedFoodDates, setExpandedFoodDates] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -216,6 +220,13 @@ export default function History() {
                   <div className="px-4 py-3 bg-purple-100 dark:bg-purple-900/50 border-b border-purple-200 dark:border-purple-800 flex justify-between items-center">
                     <div className="font-medium text-purple-800 dark:text-purple-200">{formatDate(checkin.date, checkin.checkinTime)}</div>
                     <div className="flex gap-2">
+                      <Link
+                        to={`/?editCheckin=${checkin.id}&from=history`}
+                        className="p-2 text-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900 rounded-lg"
+                        title="Edit"
+                      >
+                        <MaterialIcon name="edit" className="text-[18px]" />
+                      </Link>
                       <button
                         onClick={() => handleDeleteCheckin(checkin.id)}
                         className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900 rounded-lg"
@@ -230,7 +241,7 @@ export default function History() {
                     <div className="grid grid-cols-4 gap-2">
                       {checkin.steps && (
                         <div className="text-center">
-                          <div className="text-lg font-bold text-green-600 dark:text-green-400">{checkin.steps.toLocaleString()}</div>
+                          <div className="text-lg font-bold text-green-600 dark:text-green-400">{checkin.steps}</div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">steps</div>
                         </div>
                       )}

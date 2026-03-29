@@ -617,23 +617,8 @@ export default function MyFoods() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search..."
-            className="flex-1 min-w-[220px] px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-sm"
+            className="w-44 min-w-[140px] px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-sm"
           />
-          <div className="text-xs text-green-700 dark:text-green-300 flex items-center gap-1 mr-2">
-            <button
-              onClick={() => navigate(`/food-entries?date=${logDate}`)}
-              className="underline hover:no-underline"
-              title="Open Food Entry Manager for selected date"
-            >
-              Log Date
-            </button>
-            <input
-              type="date"
-              value={logDate}
-              onChange={(e) => setLogDate(e.target.value)}
-              className="px-2 py-1 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-            />
-          </div>
           <button
             onClick={handleLogSelected}
             disabled={selectedIds.size === 0 || bulkBusy}
@@ -668,6 +653,21 @@ export default function MyFoods() {
           >
             + Add
           </button>
+          <div className="ml-auto flex items-center gap-2">
+            <input
+              type="date"
+              value={logDate}
+              onChange={(e) => setLogDate(e.target.value)}
+              className="px-2 py-1 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            />
+            <button
+              onClick={() => navigate(`/food-entries?date=${logDate}`)}
+              className="px-3 py-1.5 text-sm rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/60"
+              title="Open Food Entry Manager for selected date"
+            >
+              Log Date
+            </button>
+          </div>
         </div>
       </div>
       <input
