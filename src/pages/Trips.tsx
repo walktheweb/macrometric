@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { getTrips, saveTrip, updateTrip, deleteTrip, Trip } from '../lib/api';
+import { formatDateDDMMYYYY } from '../lib/date';
+import MaterialIcon from '../components/MaterialIcon';
 
 export default function Trips() {
   const { userId, loading: authLoading } = useAuth();
@@ -102,8 +104,7 @@ export default function Trips() {
   };
 
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    return formatDateDDMMYYYY(dateStr);
   };
 
   if (authLoading || loading) {
@@ -245,7 +246,9 @@ export default function Trips() {
         
         {trips.length === 0 ? (
           <div className="p-8 text-center text-gray-500 dark:text-gray-400">
-            <div className="text-4xl mb-3">🚴</div>
+            <div className="mb-3 flex justify-center">
+              <MaterialIcon name="directions_bike" className="text-[40px]" />
+            </div>
             <p>No rides logged yet</p>
             <p className="text-sm">Start tracking your cycling!</p>
           </div>
@@ -273,7 +276,7 @@ export default function Trips() {
                       onClick={() => handleDelete(trip.id)}
                       className="text-gray-400 hover:text-red-500 transition-colors"
                     >
-                      ?
+                      <MaterialIcon name="delete" className="text-[18px]" />
                     </button>
                   </div>
                 </div>

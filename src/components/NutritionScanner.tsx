@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import Tesseract from 'tesseract.js';
+import MaterialIcon from './MaterialIcon';
 
 interface NutritionScannerProps {
   onScan: (data: {
@@ -163,9 +164,11 @@ export default function NutritionScanner({ onScan, onClose }: NutritionScannerPr
           onClick={onClose}
           className="absolute top-4 right-4 z-10 p-2 bg-white rounded-full text-black"
         >
-          ✕
+          <MaterialIcon name="close" className="text-[20px]" />
         </button>
-        <div className="text-4xl mb-4 text-white">📷</div>
+        <div className="mb-4 text-white">
+          <MaterialIcon name="photo_camera" className="text-[40px]" />
+        </div>
         <p className="text-white text-center mb-4">{error}</p>
         <button
           onClick={retake}
@@ -183,7 +186,7 @@ export default function NutritionScanner({ onScan, onClose }: NutritionScannerPr
         onClick={onClose}
         className="absolute top-4 right-4 z-10 p-2 bg-white rounded-full text-black"
       >
-        ✕
+        <MaterialIcon name="close" className="text-[20px]" />
       </button>
 
       {!capturedImage ? (
@@ -218,7 +221,7 @@ export default function NutritionScanner({ onScan, onClose }: NutritionScannerPr
             </button>
             {isProcessing && (
               <div className="px-6 py-3 bg-blue-500 text-white rounded-xl font-semibold flex items-center gap-2">
-                <div className="animate-spin">⏳</div>
+                <MaterialIcon name="hourglass_top" className="text-[18px] animate-spin" />
                 Processing...
               </div>
             )}

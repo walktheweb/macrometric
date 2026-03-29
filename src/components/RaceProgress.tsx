@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
 import { Checkin, RaceGoal } from '../lib/api';
+import { formatDateDDMMYYYY } from '../lib/date';
+import MaterialIcon from './MaterialIcon';
 
 interface RaceProgressProps {
   checkins: Checkin[];
@@ -41,8 +43,7 @@ export default function RaceProgress({ checkins, raceGoal, daysUntil, weeksUntil
   }, [checkins, raceGoal, weeksUntil]);
 
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    return formatDateDDMMYYYY(dateStr);
   };
 
   const getStatusColor = () => {
@@ -61,7 +62,7 @@ export default function RaceProgress({ checkins, raceGoal, daysUntil, weeksUntil
     return (
       <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-5 text-white">
         <div className="flex items-center gap-3 mb-4">
-          <span className="text-2xl">🎯</span>
+          <MaterialIcon name="target" className="text-[28px]" />
           <div>
             <div className="font-semibold">{raceGoal.eventName ? `${raceGoal.eventName}: ${formatDate(raceGoal.raceDate)}` : formatDate(raceGoal.raceDate)}</div>
             <div className="text-sm opacity-80">{daysUntil} days to go</div>
@@ -82,7 +83,7 @@ export default function RaceProgress({ checkins, raceGoal, daysUntil, weeksUntil
   return (
     <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-5 text-white">
       <div className="flex items-center gap-3 mb-4">
-        <span className="text-2xl">🎯</span>
+        <MaterialIcon name="target" className="text-[28px]" />
         <div>
           <div className="font-semibold">{raceGoal.eventName ? `${raceGoal.eventName}: ${formatDate(raceGoal.raceDate)}` : formatDate(raceGoal.raceDate)}</div>
           <div className="text-sm opacity-80">{daysUntil} days to go</div>
@@ -128,3 +129,4 @@ export default function RaceProgress({ checkins, raceGoal, daysUntil, weeksUntil
     </div>
   );
 }
+

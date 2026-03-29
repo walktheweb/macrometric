@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { getPresets, addLog, deletePreset, Preset } from '../lib/api';
 import { useNavigate } from 'react-router-dom';
 import { useAuth as useAuthContext } from '../contexts/AuthContext';
+import MaterialIcon from '../components/MaterialIcon';
 
 export default function Presets() {
   const navigate = useNavigate();
@@ -54,7 +55,7 @@ export default function Presets() {
   if (presets.length === 0) {
     return (
       <div className="text-center py-12">
-        <div className="text-5xl mb-4">⭐</div>
+        <div className="mb-4 flex justify-center"><MaterialIcon name="star" className="text-[48px] text-amber-400" /></div>
         <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 mb-2">No Presets Yet</h2>
         <p className="text-gray-500 dark:text-gray-400 mb-6">
           Save your favorite foods as presets for quick logging.
@@ -119,3 +120,4 @@ export default function Presets() {
     </div>
   );
 }
+

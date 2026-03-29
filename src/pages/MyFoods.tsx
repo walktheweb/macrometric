@@ -1,7 +1,8 @@
 import { useRef, useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getMyFoods, addMyFood, deleteMyFood, addLog, updateMyFoodAndLogs, Food, getToday } from '../lib/api';
+import MaterialIcon from '../components/MaterialIcon';
 
 type EditableField =
   | 'name'
@@ -32,6 +33,7 @@ type SortKey =
 
 export default function MyFoods() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { userId, loading: authLoading } = useAuth();
   const [allFoods, setAllFoods] = useState<Food[]>([]);
   const [search, setSearch] = useState('');
@@ -44,7 +46,12 @@ export default function MyFoods() {
   const [inlineEdit, setInlineEdit] = useState<{ id: string; field: EditableField } | null>(null);
   const [inlineValue, setInlineValue] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
-  const [logDate, setLogDate] = useState(getToday());
+  const initialLogDateParam = searchParams.get('logDate');
+  const [logDate, setLogDate] = useState(
+    initialLogDateParam && /^\d{4}-\d{2}-\d{2}$/.test(initialLogDateParam)
+      ? initialLogDateParam
+      : getToday()
+  );
   const [logInputs, setLogInputs] = useState<Record<string, { count: string; grams: string }>>({});
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -68,6 +75,12 @@ export default function MyFoods() {
       loadFoods();
     }
   }, [userId]);
+
+  useEffect(() => {
+    const logDateParam = searchParams.get('logDate');
+    if (!logDateParam || !/^\d{4}-\d{2}-\d{2}$/.test(logDateParam)) return;
+    if (logDateParam !== logDate) setLogDate(logDateParam);
+  }, [searchParams, logDate]);
 
   const loadFoods = async () => {
     if (!userId) return;
@@ -240,7 +253,17 @@ export default function MyFoods() {
             quantity = gramsValue / servingSize;
           }
 
-          return addLog(userId, { ...food, quantity, date: logDate });
+          const multiplier = quantity;
+          return addLog(userId, {
+            ...food,
+            calories: Math.round((food.calories || 0) * multiplier * 10) / 10,
+            protein: Math.round((food.protein || 0) * multiplier * 10) / 10,
+            carbs: Math.round((food.carbs || 0) * multiplier * 10) / 10,
+            fat: Math.round((food.fat || 0) * multiplier * 10) / 10,
+            netCarbs: Math.round(((food.netCarbs && food.netCarbs > 0 ? food.netCarbs : food.carbs) || 0) * multiplier * 10) / 10,
+            quantity,
+            date: logDate,
+          });
         })
       );
       alert(`Logged ${selectedFoods.length} item(s) to ${logDate}.`);
@@ -596,15 +619,21 @@ export default function MyFoods() {
             placeholder="Search..."
             className="flex-1 min-w-[220px] px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-sm"
           />
-          <label className="text-xs text-green-700 dark:text-green-300 flex items-center gap-1 mr-2">
-            Log Date
+          <div className="text-xs text-green-700 dark:text-green-300 flex items-center gap-1 mr-2">
+            <button
+              onClick={() => navigate(`/food-entries?date=${logDate}`)}
+              className="underline hover:no-underline"
+              title="Open Food Entry Manager for selected date"
+            >
+              Log Date
+            </button>
             <input
               type="date"
               value={logDate}
               onChange={(e) => setLogDate(e.target.value)}
               className="px-2 py-1 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             />
-          </label>
+          </div>
           <button
             onClick={handleLogSelected}
             disabled={selectedIds.size === 0 || bulkBusy}
@@ -651,7 +680,9 @@ export default function MyFoods() {
 
       {sortedFoods.length === 0 ? (
         <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-2xl shadow-sm">
-          <div className="text-5xl mb-4">🔍</div>
+          <div className="mb-4 flex justify-center">
+            <MaterialIcon name="search" className="text-[48px] text-gray-400 dark:text-gray-500" />
+          </div>
           <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-100 mb-2">No Foods Found</h3>
           <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-xs mx-auto">
             {search ? 'No foods match your search.' : 'Add your own foods to build a personalized database.'}

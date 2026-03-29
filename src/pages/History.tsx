@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getHistory, DayLog, getCheckins, getRaceGoal, RaceGoal, deleteCheckin, Checkin } from '../lib/api';
+import { formatDateDDMMYYYY } from '../lib/date';
+import MaterialIcon from '../components/MaterialIcon';
 
 export default function History() {
   const { userId, loading: authLoading } = useAuth();
@@ -11,6 +13,7 @@ export default function History() {
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(7);
   const [activeTab, setActiveTab] = useState<'food' | 'checkin' | 'goals'>('food');
+  const [expandedFoodDates, setExpandedFoodDates] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (userId) {
@@ -39,20 +42,22 @@ export default function History() {
     loadData();
   };
 
+  const toggleFoodDate = (dateStr: string) => {
+    setExpandedFoodDates(prev => {
+      const next = new Set(prev);
+      if (next.has(dateStr)) next.delete(dateStr);
+      else next.add(dateStr);
+      return next;
+    });
+  };
+
   const formatDate = (dateStr: string, timeStr?: string) => {
-    const date = new Date(dateStr);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    
-    let dateText = dateStr === today.toISOString().split('T')[0] ? 'Today' : 
-                   dateStr === yesterday.toISOString().split('T')[0] ? 'Yesterday' : 
-                   date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-    
+    let dateText = formatDateDDMMYYYY(dateStr);
+
     if (timeStr) {
-      dateText += ` • ${timeStr}`;
+      dateText += " - ";
     }
-    
+
     return dateText;
   };
 
@@ -126,17 +131,28 @@ export default function History() {
             <div className="space-y-3">
               {sortedDates.map(dateStr => {
                 const dayData = history[dateStr];
+                const isExpanded = expandedFoodDates.has(dateStr);
                 return (
                   <div key={dateStr} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
                     <div className="px-4 py-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-100 dark:border-gray-600">
                       <div className="flex items-center justify-between gap-3">
                         <div className="font-medium text-gray-800 dark:text-gray-100">{formatDate(dateStr)}</div>
-                        <Link
-                          to={`/food-entries?date=${dateStr}`}
-                          className="text-xs text-blue-600 dark:text-blue-400 hover:underline whitespace-nowrap"
-                        >
-                          Open in Entry Manager
-                        </Link>
+                        <div className="flex items-center gap-3 ml-auto">
+                          <Link
+                            to={`/food-entries?date=${dateStr}`}
+                            className="text-xs text-blue-600 dark:text-blue-400 hover:underline whitespace-nowrap"
+                          >
+                            Open in Entry Manager
+                          </Link>
+                          <button
+                            onClick={() => toggleFoodDate(dateStr)}
+                            className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white text-sm leading-none"
+                            aria-label={isExpanded ? 'Collapse items' : 'Expand items'}
+                            title={isExpanded ? 'Collapse items' : 'Expand items'}
+                          >
+                            <MaterialIcon name={isExpanded ? 'expand_less' : 'expand_more'} className="text-[18px]" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                     
@@ -168,19 +184,14 @@ export default function History() {
                         </div>
                       </div>
                       
-                      {dayData.logs.length > 0 && (
+                      {isExpanded && dayData.logs.length > 0 && (
                         <div className="border-t border-gray-100 dark:border-gray-700 pt-3 space-y-2">
-                          {dayData.logs.slice(0, 5).map(log => (
+                          {dayData.logs.map(log => (
                             <div key={log.id} className="flex justify-between text-sm">
                               <span className="text-gray-600 dark:text-gray-300 truncate">{log.name}</span>
                               <span className="text-gray-500 dark:text-gray-400 ml-2">{Math.round(log.calories)} kcal</span>
                             </div>
                           ))}
-                          {dayData.logs.length > 5 && (
-                            <div className="text-sm text-gray-400 dark:text-gray-500">
-                              +{dayData.logs.length - 5} more items
-                            </div>
-                          )}
                         </div>
                       )}
                     </div>
@@ -210,7 +221,7 @@ export default function History() {
                         className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900 rounded-lg"
                         title="Delete"
                       >
-                        🗑️
+                        <MaterialIcon name="delete" className="text-[18px]" />
                       </button>
                     </div>
                   </div>
@@ -288,13 +299,13 @@ export default function History() {
       {activeTab === 'goals' && (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5">
           <div className="flex items-center gap-3 mb-4">
-            <span className="text-3xl">🎯</span>
+            <MaterialIcon name="target" className="text-[30px] text-blue-500 dark:text-blue-400" />
             <div>
               <div className="font-semibold text-lg text-gray-900 dark:text-gray-100">
                 {raceGoal?.eventName || 'Event Goal'}
               </div>
               <div className="text-sm text-gray-500 dark:text-gray-400">
-                {raceGoal?.raceDate ? new Date(raceGoal.raceDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }) : 'No date set'}
+                {raceGoal?.raceDate ? formatDateDDMMYYYY(raceGoal.raceDate) : 'No date set'}
               </div>
             </div>
           </div>
@@ -318,3 +329,5 @@ export default function History() {
     </div>
   );
 }
+
+

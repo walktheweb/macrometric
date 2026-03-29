@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getLogs, getGoals, deleteLog, updateLog, DayLog, Goal, FoodLog, getTodayCheckin, saveCheckin, getCheckins, getTrips, getRaceGoal, getDaysUntilRace, RaceGoal, getStepGoal, Checkin } from '../lib/api';
+import { formatDateDDMMYYYY } from '../lib/date';
 import RaceProgress from '../components/RaceProgress';
 import TripWidget from '../components/TripWidget';
+import MaterialIcon from '../components/MaterialIcon';
 
 function MacroBar({ label, current, goal, color }: { label: string; current: number; goal: number; color: string }) {
   const percentage = Math.min((current / goal) * 100, 100);
@@ -39,6 +41,37 @@ function getBmiPosition(bmi: number) {
 
 function getStepsPosition(steps: number, goal: number) {
   return Math.min(100, (steps / goal) * 100);
+}
+
+function ExplodedPieIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-5 h-5" aria-hidden="true">
+      <path
+        d="M12 12 L6.4 15.8 A8.6 8.6 0 1 0 12 3.4 Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M11.9 7.9 L11.9 2.6 L8.0 4.2 Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9.8 11.2 L4.7 14.4 L3.1 10.3 L7.3 7.1 Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 export default function Dashboard() {
@@ -591,10 +624,13 @@ export default function Dashboard() {
       {/* BMI Card - from last known weight */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5">
         <div className="flex justify-between items-center mb-2">
-          <span className="text-lg font-semibold text-gray-800 dark:text-gray-100">BMI</span>
+          <span className="text-lg font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-2">
+            <MaterialIcon name="monitor_weight" className="text-[20px]" />
+            BMI
+          </span>
           {lastWeightCheckin && lastWeightCheckin.date && (
             <span className="text-sm text-gray-500 dark:text-gray-400">
-              {lastWeightCheckin.weight}kg ({new Date(lastWeightCheckin.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })})
+              {lastWeightCheckin.weight}kg ({formatDateDDMMYYYY(lastWeightCheckin.date)})
             </span>
           )}
         </div>
@@ -647,7 +683,10 @@ export default function Dashboard() {
       {/* Steps Card */}
       <div className="bg-green-50 dark:bg-green-900/20 rounded-2xl shadow-sm p-5 border border-green-100 dark:border-green-800">
         <div className="flex justify-between items-center mb-2">
-          <span className="text-lg font-semibold text-green-800 dark:text-green-200">Steps</span>
+          <span className="text-lg font-semibold text-green-800 dark:text-green-200 inline-flex items-center gap-2">
+            <MaterialIcon name="directions_walk" className="text-[20px]" />
+            Steps
+          </span>
           <span className="text-lg font-bold text-green-600 dark:text-green-400">
             {todaySteps > 0 ? todaySteps.toLocaleString() : '--'}
             <span className="text-sm font-normal text-gray-500 dark:text-gray-400"> / {stepGoal.toLocaleString()}</span>
@@ -678,7 +717,10 @@ export default function Dashboard() {
       {/* Daily Progress Card */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Daily Progress</h2>
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-2">
+            <ExplodedPieIcon />
+            Daily Progress
+          </h2>
           <span className="text-2xl font-bold text-primary-600 dark:text-blue-400">
             {Math.round(totals.calories)}
             <span className="text-sm font-normal text-gray-400 dark:text-gray-500"> / {goalsData.calories}</span>
@@ -774,7 +816,7 @@ export default function Dashboard() {
                   <span className="text-amber-500 dark:text-amber-400">C:{Math.round(log.netCarbs && log.netCarbs > 0 ? log.netCarbs : log.carbs)}</span>
                 </div>
                 <div className="ml-3 p-2 text-primary-500 dark:text-blue-400">
-                  ✏️
+                  <MaterialIcon name="edit" className="text-[18px]" />
                 </div>
               </button>
             ))}

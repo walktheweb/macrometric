@@ -21,6 +21,10 @@ export default function FoodEntries() {
   const [busy, setBusy] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [editingLog, setEditingLog] = useState<FoodLog | null>(null);
+  const [editQuantity, setEditQuantity] = useState(1);
+  const [editQuantityInput, setEditQuantityInput] = useState('1');
+  const [editQuantityType, setEditQuantityType] = useState<'number' | 'grams'>('grams');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const firstLoadRef = useRef(true);
 
@@ -110,7 +114,9 @@ export default function FoodEntries() {
 
   const startInlineEdit = (log: FoodLog, field: EditableField) => {
     setInlineEdit({ id: log.id, field });
-    const raw = (log as any)[field];
+    const raw = field === 'quantity'
+      ? (log.quantity || 1) * (Number(log.servingSize) || 100)
+      : (log as any)[field];
     setInlineValue(raw === null || raw === undefined ? '' : String(raw));
   };
 
@@ -124,8 +130,12 @@ export default function FoodEntries() {
     const field = inlineEdit.field;
     const updates: Partial<FoodLog> = {};
 
-    if (['calories', 'protein', 'carbs', 'fat', 'quantity'].includes(field)) {
-      (updates as any)[field] = Number(inlineValue) || 0;
+    if (field === 'quantity') {
+      const grams = Number(inlineValue.replace(',', '.')) || 0;
+      const servingSize = Number(log.servingSize) || 100;
+      updates.quantity = grams > 0 ? grams / servingSize : 0;
+    } else if (['calories', 'protein', 'carbs', 'fat'].includes(field)) {
+      (updates as any)[field] = Number(inlineValue.replace(',', '.')) || 0;
     } else if (field === 'brand') {
       updates.brand = inlineValue.trim() ? inlineValue : null;
     } else {
@@ -153,6 +163,46 @@ export default function FoodEntries() {
       next.delete(id);
       return next;
     });
+  };
+
+  const openEditPopup = (log: FoodLog) => {
+    const servingSize = Number(log.servingSize) || 100;
+    const currentRatio = log.quantity || 1;
+    const currentGrams = Math.round(currentRatio * servingSize * 100) / 100;
+    setEditingLog(log);
+    setEditQuantity(currentGrams);
+    setEditQuantityInput(String(currentGrams));
+    setEditQuantityType('grams');
+  };
+
+  const savePopupEdit = async () => {
+    if (!editingLog || !userId) return;
+    const servingSize = Number(editingLog.servingSize) || 100;
+    const parsed = Number(editQuantityInput.replace(',', '.'));
+    const safeQuantity = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+    const quantityInput = editQuantityType === 'grams' ? safeQuantity : Math.max(1, Math.floor(safeQuantity));
+    const quantityToSave = editQuantityType === 'grams' ? quantityInput / servingSize : quantityInput;
+
+    const baseMacros = {
+      calories: editingLog.calories / (editingLog.quantity || 1),
+      protein: editingLog.protein / (editingLog.quantity || 1),
+      carbs: editingLog.carbs / (editingLog.quantity || 1),
+      fat: editingLog.fat / (editingLog.quantity || 1),
+    };
+
+    const multiplier = editQuantityType === 'grams' ? quantityToSave : quantityToSave;
+    const updates: Partial<FoodLog> = {
+      quantity: quantityToSave,
+      calories: Math.round(baseMacros.calories * multiplier * 10) / 10,
+      protein: Math.round(baseMacros.protein * multiplier * 10) / 10,
+      carbs: Math.round(baseMacros.carbs * multiplier * 10) / 10,
+      fat: Math.round(baseMacros.fat * multiplier * 10) / 10,
+      serving: editQuantityType === 'grams' ? `${quantityInput}g` : `${quantityInput}`,
+    };
+
+    await updateLog(userId, editingLog.id, updates);
+    setLogs(prev => prev.map(l => (l.id === editingLog.id ? { ...l, ...updates } : l)));
+    setEditingLog(null);
   };
 
   const handleExport = () => {
@@ -268,12 +318,133 @@ export default function FoodEntries() {
     );
   }
 
+  if (editingLog) {
+    const servingSize = Number(editingLog.servingSize) || 100;
+    const baseMacros = {
+      calories: editingLog.calories / (editingLog.quantity || 1),
+      protein: editingLog.protein / (editingLog.quantity || 1),
+      carbs: editingLog.carbs / (editingLog.quantity || 1),
+      fat: editingLog.fat / (editingLog.quantity || 1),
+    };
+    const parsedPreview = Number(editQuantityInput.replace(',', '.'));
+    const previewQuantity = Number.isFinite(parsedPreview) && parsedPreview > 0
+      ? (editQuantityType === 'grams' ? parsedPreview : Math.max(1, Math.floor(parsedPreview)))
+      : editQuantity;
+    const multiplier = editQuantityType === 'grams' ? previewQuantity / servingSize : previewQuantity;
+    const calcCals = Math.round(baseMacros.calories * multiplier);
+    const calcProtein = Math.round(baseMacros.protein * multiplier);
+    const calcCarbs = Math.round(baseMacros.carbs * multiplier);
+    const calcFat = Math.round(baseMacros.fat * multiplier);
+
+    return (
+      <div className="space-y-4">
+        <button
+          onClick={() => setEditingLog(null)}
+          className="text-primary-600 dark:text-blue-400 font-medium flex items-center gap-1"
+        >
+          Back
+        </button>
+
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-1">{editingLog.name}</h2>
+          <p className="text-gray-500 dark:text-gray-400 mb-4">Tap to adjust amount</p>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">Amount</label>
+            <div className="flex gap-2 mb-3">
+              <button
+                onClick={() => setEditQuantityType('number')}
+                className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
+                  editQuantityType === 'number'
+                    ? 'bg-primary-500 text-white'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                }`}
+              >
+                Number
+              </button>
+              <button
+                onClick={() => setEditQuantityType('grams')}
+                className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
+                  editQuantityType === 'grams'
+                    ? 'bg-primary-500 text-white'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                }`}
+              >
+                Grams
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                inputMode="decimal"
+                autoFocus
+                value={editQuantityInput}
+                onChange={(e) => setEditQuantityInput(e.target.value.replace(',', '.'))}
+                onBlur={() => {
+                  const parsed = Number(editQuantityInput.replace(',', '.'));
+                  const safe = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+                  const normalized = editQuantityType === 'grams' ? safe : Math.max(1, Math.floor(safe));
+                  setEditQuantity(normalized);
+                  setEditQuantityInput(String(normalized));
+                }}
+                min={1}
+                step={editQuantityType === 'grams' ? 10 : 1}
+                className="flex-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-lg text-center"
+              />
+              <span className="text-gray-500 dark:text-gray-400 w-16">
+                {editQuantityType === 'grams' ? 'g' : 'x'}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-4 gap-3 mb-6">
+            <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-xl">
+              <div className="text-lg font-bold text-gray-900 dark:text-white">{calcCals}</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">kcal</div>
+            </div>
+            <div className="text-center p-3 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
+              <div className="text-lg font-bold text-blue-600 dark:text-blue-400">{calcFat}g</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">Fat</div>
+            </div>
+            <div className="text-center p-3 bg-red-50 dark:bg-red-900/30 rounded-xl">
+              <div className="text-lg font-bold text-red-600 dark:text-red-400">{calcProtein}g</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">Protein</div>
+            </div>
+            <div className="text-center p-3 bg-amber-50 dark:bg-amber-900/30 rounded-xl">
+              <div className="text-lg font-bold text-amber-600 dark:text-amber-400">{calcCarbs}g</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">Carbs</div>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={async () => {
+                await handleDelete(editingLog.id);
+                setEditingLog(null);
+              }}
+              className="flex-1 py-3 bg-red-500 text-white font-semibold rounded-xl hover:bg-red-600 transition-colors"
+            >
+              Delete
+            </button>
+            <button
+              onClick={savePopupEdit}
+              className="flex-1 py-3 bg-primary-500 text-white font-semibold rounded-xl hover:bg-primary-600 transition-colors"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-3">
         <div className="flex items-center gap-3 flex-wrap">
           <Link
-            to="/my-foods"
+            to={`/my-foods?logDate=${date}`}
             className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600"
           >
             Open Food Manager
@@ -340,6 +511,7 @@ export default function FoodEntries() {
                     />
                   </th>
                   <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('name')} className="hover:underline">Name{sortIndicator('name')}</button></th>
+                  <th className="px-2 py-2 font-semibold">Edit</th>
                   <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('brand')} className="hover:underline">Brand{sortIndicator('brand')}</button></th>
                   <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('quantity')} className="hover:underline">Qty{sortIndicator('quantity')}</button></th>
                   <th className="px-2 py-2 font-semibold"><button onClick={() => toggleSort('serving')} className="hover:underline">Serving{sortIndicator('serving')}</button></th>
@@ -361,7 +533,7 @@ export default function FoodEntries() {
                         onChange={() => toggleSelect(log.id)}
                       />
                     </td>
-                    {(['name', 'brand', 'quantity', 'serving', 'calories', 'protein', 'carbs', 'fat'] as EditableField[]).map(field => (
+                    {(['name'] as EditableField[]).map(field => (
                       <td key={field} className="px-2 py-2 whitespace-nowrap">
                         {inlineEdit?.id === log.id && inlineEdit.field === field ? (
                           <input
@@ -382,6 +554,46 @@ export default function FoodEntries() {
                             className="hover:underline text-left"
                           >
                             {(log as any)[field] ?? '-'}
+                          </button>
+                        )}
+                      </td>
+                    ))}
+                    <td className="px-2 py-2 whitespace-nowrap">
+                      <button
+                        onClick={() => openEditPopup(log)}
+                        className="text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                        aria-label={`Open edit popup for ${log.name}`}
+                        title="Open edit popup"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5" aria-hidden="true">
+                          <path d="M12 20h9" />
+                          <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                        </svg>
+                      </button>
+                    </td>
+                    {(['brand', 'quantity', 'serving', 'calories', 'protein', 'carbs', 'fat'] as EditableField[]).map(field => (
+                      <td key={field} className="px-2 py-2 whitespace-nowrap">
+                        {inlineEdit?.id === log.id && inlineEdit.field === field ? (
+                          <input
+                            autoFocus
+                            type={['calories', 'protein', 'carbs', 'fat', 'quantity'].includes(field) ? 'number' : 'text'}
+                            value={inlineValue}
+                            onChange={(e) => setInlineValue(e.target.value)}
+                            onBlur={() => saveInlineEdit(log)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') saveInlineEdit(log);
+                              if (e.key === 'Escape') cancelInlineEdit();
+                            }}
+                            className="w-24 px-1 py-0.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
+                          />
+                        ) : (
+                          <button
+                            onClick={() => startInlineEdit(log, field)}
+                            className="hover:underline text-left"
+                          >
+                            {field === 'quantity'
+                              ? `${Math.round(((log.quantity || 1) * (Number(log.servingSize) || 100)) * 100) / 100}g`
+                              : ((log as any)[field] ?? '-')}
                           </button>
                         )}
                       </td>

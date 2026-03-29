@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import MaterialIcon from './MaterialIcon';
 
 interface BarcodeScannerProps {
   onDetected: (barcode: string) => void;
@@ -91,7 +92,9 @@ export default function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-white p-4">
-        <div className="text-4xl mb-4">📷</div>
+        <div className="mb-4">
+          <MaterialIcon name="photo_camera" className="text-[40px]" />
+        </div>
         <p className="text-center">{error}</p>
       </div>
     );

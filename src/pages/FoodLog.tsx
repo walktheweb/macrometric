@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { searchAllFoods, searchByBarcode, addLog, Food, addMyFood, updateMyFoodAndLogs, deleteMyFood } from '../lib/api';
 import BarcodeScanner from '../components/BarcodeScanner';
 import NutritionScanner from '../components/NutritionScanner';
+import MaterialIcon from '../components/MaterialIcon';
 
 export default function FoodLog() {
   const navigate = useNavigate();
@@ -268,7 +269,7 @@ export default function FoodLog() {
           onClick={() => setShowScanner(false)}
           className="absolute top-4 right-4 z-10 p-2 bg-white rounded-full"
         >
-          ✕
+          <MaterialIcon name="close" className="text-[20px] text-gray-900" />
         </button>
         <BarcodeScanner onDetected={handleBarcode} />
       </div>
@@ -409,13 +410,15 @@ export default function FoodLog() {
                 onClick={() => setShowNutritionScanner(true)}
                 className="text-sm text-green-600 dark:text-green-400 hover:underline flex items-center gap-1"
               >
-                📷 Scan Label
+                <MaterialIcon name="photo_camera" className="text-[16px]" />
+                Scan Label
               </button>
               <button
                 onClick={() => setShowImportInput(!showImportInput)}
                 className="text-sm text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
               >
-                📥 Import
+                <MaterialIcon name="file_upload" className="text-[16px]" />
+                Import
               </button>
             </div>
           </div>
@@ -599,7 +602,7 @@ export default function FoodLog() {
             className="px-4 py-3 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
             title="Scan barcode"
           >
-            📷
+            <MaterialIcon name="barcode_scanner" className="text-[22px] text-gray-700 dark:text-gray-200" />
           </button>
         </div>
         <button
@@ -617,13 +620,15 @@ export default function FoodLog() {
       {!loading && myFoods.length > 0 && (
         <div>
           <h3 className="text-sm font-medium text-green-600 dark:text-green-400 flex items-center gap-1 mb-2">
-            <span>🌱</span> My Foods ({completeFoods.length})
+            <MaterialIcon name="nutrition" className="text-[16px]" />
+            My Foods ({completeFoods.length})
           </h3>
           
           {incompleteFoods.length > 0 && (
             <div className="mb-4">
               <h4 className="text-sm font-medium text-red-600 dark:text-red-400 mb-2 flex items-center gap-1">
-                <span>🔴</span> Needs Review ({incompleteFoods.length})
+                <MaterialIcon name="warning" className="text-[16px]" />
+                Needs Review ({incompleteFoods.length})
               </h4>
               <div className="space-y-2">
                 {incompleteFoods.map(food => (
@@ -653,14 +658,14 @@ export default function FoodLog() {
                             className="p-2 text-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900 rounded-lg"
                             title="Edit"
                           >
-                            ✏️
+                            <MaterialIcon name="edit" className="text-[18px]" />
                           </button>
                           <button
                             onClick={() => handleDeleteFood(food)}
                             className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900 rounded-lg"
                             title="Delete"
                           >
-                            🗑️
+                            <MaterialIcon name="delete" className="text-[18px]" />
                           </button>
                         </div>
                       </div>
@@ -699,14 +704,14 @@ export default function FoodLog() {
                         className="p-2 text-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900 rounded-lg"
                         title="Edit"
                       >
-                        ✏️
+                        <MaterialIcon name="edit" className="text-[18px]" />
                       </button>
                       <button
                         onClick={() => handleDeleteFood(food)}
                         className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900 rounded-lg"
                         title="Delete"
                       >
-                        🗑️
+                        <MaterialIcon name="delete" className="text-[18px]" />
                       </button>
                     </div>
                   </div>
@@ -720,7 +725,8 @@ export default function FoodLog() {
       {!loading && databaseFoods.length > 0 && (
         <div>
           <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-1">
-            <span>🌍</span> OpenFoodFacts ({databaseFoods.length})
+            <MaterialIcon name="public" className="text-[16px]" />
+            OpenFoodFacts ({databaseFoods.length})
           </h3>
           <div className="space-y-2">
             {databaseFoods.map((food, index) => (

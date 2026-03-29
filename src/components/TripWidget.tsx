@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Trip } from '../lib/api';
+import { formatDateDDMMYYYY } from '../lib/date';
+import MaterialIcon from './MaterialIcon';
 
 interface TripWidgetProps {
   trips: Trip[];
@@ -37,11 +39,7 @@ export default function TripWidget({ trips }: TripWidgetProps) {
   };
 
   const formatDate = (dateStr: string) => {
-    const today = new Date().toISOString().split('T')[0];
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-    if (dateStr === today) return 'Today';
-    if (dateStr === yesterday) return 'Yesterday';
-    return new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    return formatDateDDMMYYYY(dateStr);
   };
 
   const recentTrip = weekTrips[0];
@@ -50,7 +48,7 @@ export default function TripWidget({ trips }: TripWidgetProps) {
     <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-5 text-white">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <span className="text-2xl">🚴</span>
+          <MaterialIcon name="directions_bike" className="text-[28px]" />
           <div>
             <div className="font-semibold">This Week</div>
             <div className="text-sm opacity-80">
@@ -116,3 +114,4 @@ export default function TripWidget({ trips }: TripWidgetProps) {
     </div>
   );
 }
+

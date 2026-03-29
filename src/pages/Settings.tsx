@@ -3,15 +3,35 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getGoals, updateGoals, getRaceGoal, saveRaceGoal, getDaysUntilRace, changePassword, logout, getStepGoal, saveStepGoal as saveStepGoalApi, exportUserData, importUserData } from '../lib/api';
+import { formatDateDDMMYYYY } from '../lib/date';
+import MaterialIcon from '../components/MaterialIcon';
 
 const getVersionString = () => {
-  const now = new Date();
-  const dd = String(now.getDate()).padStart(2, '0');
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const yyyy = now.getFullYear();
-  const HH = String(now.getHours()).padStart(2, '0');
-  const MM = String(now.getMinutes()).padStart(2, '0');
-  return `2.0.003.${dd}${mm}${yyyy}${HH}${MM}`;
+  return '2.0.0';
+};
+
+const normalizeToIsoDate = (value?: string | null): string => {
+  if (!value) return '2026-05-23';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+
+  const dmyMatch = value.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+  if (dmyMatch) {
+    const dd = dmyMatch[1].padStart(2, '0');
+    const mm = dmyMatch[2].padStart(2, '0');
+    const yyyy = dmyMatch[3];
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  return '2026-05-23';
+};
+
+const normalizeToDisplayDate = (value?: string | null): string => {
+  return formatDateDDMMYYYY(normalizeToIsoDate(value));
 };
 
 interface CollapsibleSectionProps {
@@ -36,14 +56,12 @@ function CollapsibleSection({ title, icon, defaultExpanded = false, gradient = f
         className="w-full p-5 flex items-center justify-between text-left"
       >
         <div className="flex items-center gap-3">
-          <span className="text-2xl">{icon}</span>
+          <MaterialIcon name={icon} className="text-[24px]" />
           <h2 className={`font-semibold text-lg ${gradient ? 'text-white' : 'text-gray-800 dark:text-gray-100'}`}>
             {title}
           </h2>
         </div>
-        <span className={`text-xl transition-transform duration-300 ${gradient ? 'text-white' : 'text-gray-400'} ${isExpanded ? 'rotate-180' : ''}`}>
-          ▼
-        </span>
+        <span className={`text-xl transition-transform duration-300 ${gradient ? 'text-white' : 'text-gray-400'} ${isExpanded ? 'rotate-180' : ''}`}><MaterialIcon name="expand_more" className="text-[24px]" /></span>
       </button>
       <div className={`overflow-hidden transition-all duration-300 ${isExpanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}>
         <div className={gradient ? 'p-5 pt-0' : 'p-5 pt-0'}>
@@ -74,7 +92,7 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   
   const [eventName, setEventName] = useState('');
-  const [raceDate, setRaceDate] = useState('2026-05-23');
+  const [raceDate, setRaceDate] = useState('23-05-2026');
   const [raceTargetWeight, setRaceTargetWeight] = useState(80);
   const [raceWeeklyTarget, setRaceWeeklyTarget] = useState(0.5);
   const [raceSaved, setRaceSaved] = useState(false);
@@ -170,7 +188,7 @@ export default function Settings() {
       setCarbsPct(Math.round((stored.carbs * 4 / totalCals) * 100));
     }
     
-    setRaceDate(raceGoalData.raceDate);
+    setRaceDate(normalizeToDisplayDate(raceGoalData.raceDate));
     setRaceTargetWeight(raceGoalData.targetWeight);
     setRaceWeeklyTarget(raceGoalData.weeklyTarget);
     setEventName(raceGoalData.eventName || '');
@@ -207,9 +225,11 @@ export default function Settings() {
 
   const handleSaveRaceGoal = async () => {
     if (!userId) return;
+    const safeRaceDate = normalizeToIsoDate(raceDate);
+    setRaceDate(normalizeToDisplayDate(safeRaceDate));
     await saveRaceGoal(userId, {
       eventName,
-      raceDate,
+      raceDate: safeRaceDate,
       targetWeight: raceTargetWeight,
       weeklyTarget: raceWeeklyTarget,
     });
@@ -385,7 +405,7 @@ export default function Settings() {
   return (
     <div className="space-y-4">
       {/* Daily Goals */}
-      <CollapsibleSection title="Daily Goals" icon="🎯" defaultExpanded={true}>
+      <CollapsibleSection title="Daily Goals" icon="target" defaultExpanded={true}>
         <div className="flex justify-between items-center mb-4">
           <span className="text-sm text-gray-500 dark:text-gray-400">Set your macros & steps</span>
           <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
@@ -533,13 +553,16 @@ export default function Settings() {
               ? 'bg-green-500 text-white'
               : 'bg-primary-500 text-white hover:bg-primary-600'
           }`}
-        >
-          {saved ? '✓ Saved!' : 'Save Goals'}
-        </button>
+          >
+            <span className="inline-flex items-center justify-center gap-1">
+              {saved && <MaterialIcon name="check_circle" className="text-[18px]" />}
+              {saved ? 'Saved!' : 'Save Goals'}
+            </span>
+          </button>
       </CollapsibleSection>
 
       {/* Event Goal */}
-      <CollapsibleSection title="Event Goal" icon="🎯" defaultExpanded={true} gradient>
+      <CollapsibleSection title="Event Goal" icon="target" defaultExpanded={true} gradient>
         <div className="bg-white/10 rounded-xl p-4 space-y-4">
           <div>
             <label className="block text-sm opacity-80 mb-1">Event Name</label>
@@ -556,9 +579,12 @@ export default function Settings() {
             <div>
               <label className="block text-sm opacity-80 mb-1">Event Date</label>
               <input
-                type="date"
+                type="text"
                 value={raceDate}
-                onChange={(e) => setRaceDate(e.target.value)}
+                onChange={(e) => setRaceDate(e.target.value.replaceAll('/', '-').replaceAll('.', '-'))}
+                onBlur={() => setRaceDate(normalizeToDisplayDate(raceDate))}
+                placeholder="dd-mm-yyyy"
+                inputMode="numeric"
                 className="w-full px-3 py-2 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/50 focus:ring-2 focus:ring-white outline-none"
               />
             </div>
@@ -602,13 +628,16 @@ export default function Settings() {
                 : 'bg-white text-blue-600 hover:bg-white/90'
             }`}
           >
-            {raceSaved ? '✓ Saved!' : 'Save Event Goal'}
+            <span className="inline-flex items-center justify-center gap-1">
+              {raceSaved && <MaterialIcon name="check_circle" className="text-[18px]" />}
+              {raceSaved ? 'Saved!' : 'Save Event Goal'}
+            </span>
           </button>
         </div>
       </CollapsibleSection>
 
       {/* Your Stats */}
-      <CollapsibleSection title="Your Stats" icon="📊">
+      <CollapsibleSection title="Your Stats" icon="monitoring">
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Current Weight (kg)</label>
@@ -676,7 +705,7 @@ export default function Settings() {
       </CollapsibleSection>
 
       {/* Appearance */}
-      <CollapsibleSection title="Appearance" icon="🎨">
+      <CollapsibleSection title="Appearance" icon="palette">
         <div className="flex gap-2">
           {(['system', 'light', 'dark'] as const).map((t) => (
             <button
@@ -688,14 +717,14 @@ export default function Settings() {
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
               }`}
             >
-              {t === 'system' ? '💻' : t === 'light' ? '☀️' : '🌙'} {t.charAt(0).toUpperCase() + t.slice(1)}
+              <span className="inline-flex items-center gap-1"><MaterialIcon name={t === 'system' ? 'devices' : t === 'light' ? 'light_mode' : 'dark_mode'} className="text-[18px]" />{t.charAt(0).toUpperCase() + t.slice(1)}</span>
             </button>
           ))}
         </div>
       </CollapsibleSection>
 
       {/* Data Backup */}
-      <CollapsibleSection title="Data Backup" icon="💾">
+      <CollapsibleSection title="Data Backup" icon="backup">
         <div className="space-y-4">
           <p className="text-sm text-gray-500 dark:text-gray-400">
             Export your data to JSON for backup, or import a previous backup.
@@ -743,7 +772,7 @@ export default function Settings() {
       </CollapsibleSection>
 
       {/* Maintenance */}
-      <CollapsibleSection title="Maintenance" icon="🛠️">
+      <CollapsibleSection title="Maintenance" icon="build">
         <div className="space-y-3">
           <p className="text-sm text-gray-500 dark:text-gray-400">
             Open the maintenance view for bulk search/review/edit/delete on your foods.
@@ -764,7 +793,7 @@ export default function Settings() {
       </CollapsibleSection>
 
       {/* Password */}
-      <CollapsibleSection title="Password" icon="🔒">
+      <CollapsibleSection title="Password" icon="lock">
         {passwordSuccess && (
           <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-lg text-center">
             Password changed successfully!
@@ -853,7 +882,7 @@ export default function Settings() {
       </CollapsibleSection>
 
       {/* About */}
-      <CollapsibleSection title="About" icon="ℹ️">
+      <CollapsibleSection title="About" icon="info">
         <div className="space-y-4">
           <div className="text-center pb-2">
             <p className="text-sm text-gray-500 dark:text-gray-400">Created by</p>
@@ -916,14 +945,14 @@ export default function Settings() {
                         className="flex-1 px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                         autoFocus
                       />
-                      <button onClick={saveEdit} className="text-green-600 hover:text-green-700 p-1">💾</button>
-                      <button onClick={cancelEdit} className="text-gray-500 hover:text-gray-600 p-1">✖</button>
+                      <button onClick={saveEdit} className="text-green-600 hover:text-green-700 p-1"><MaterialIcon name="save" className="text-[18px]" /></button>
+                      <button onClick={cancelEdit} className="text-gray-500 hover:text-gray-600 p-1"><MaterialIcon name="close" className="text-[18px]" /></button>
                     </>
                   ) : (
                     <>
                       <span className="flex-1 text-sm text-gray-700 dark:text-gray-200">{feature.text}</span>
-                      <button onClick={() => startEdit(feature.id, feature.text)} className="text-blue-500 hover:text-blue-600 p-1">🔄</button>
-                      <button onClick={() => deleteFeatureRequest(feature.id)} className="text-red-500 hover:text-red-600 p-1">🗑️</button>
+                      <button onClick={() => startEdit(feature.id, feature.text)} className="text-blue-500 hover:text-blue-600 p-1"><MaterialIcon name="edit" className="text-[18px]" /></button>
+                      <button onClick={() => deleteFeatureRequest(feature.id)} className="text-red-500 hover:text-red-600 p-1"><MaterialIcon name="delete" className="text-[18px]" /></button>
                     </>
                   )}
                 </div>
@@ -951,3 +980,4 @@ export default function Settings() {
     </div>
   );
 }
+

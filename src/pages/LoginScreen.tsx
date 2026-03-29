@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
+import MaterialIcon from '../components/MaterialIcon';
 
 const getVersionString = () => {
   const now = new Date();
@@ -60,7 +61,7 @@ export default function LoginScreen({ onAuthenticated }: { onAuthenticated: () =
         <div className="bg-white rounded-3xl shadow-2xl p-8">
           <div className="text-center mb-8">
             <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-3xl">🔐</span>
+              <MaterialIcon name="lock" className="text-[34px] text-blue-600" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900">MacroMetric</h1>
             <p className="text-gray-500 mt-2">Enter password to continue</p>
@@ -81,7 +82,7 @@ export default function LoginScreen({ onAuthenticated }: { onAuthenticated: () =
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
               >
-                {showPassword ? '🙈' : '👁️'}
+                <MaterialIcon name={showPassword ? 'visibility_off' : 'visibility'} className="text-[22px]" />
               </button>
             </div>
 
@@ -115,3 +116,4 @@ export default function LoginScreen({ onAuthenticated }: { onAuthenticated: () =
     </div>
   );
 }
+
