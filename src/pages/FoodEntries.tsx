@@ -110,6 +110,48 @@ export default function FoodEntries() {
   }, [userId, date]);
 
   useEffect(() => {
+    if (!editingLog) return;
+
+    window.dispatchEvent(
+      new CustomEvent('macrometric:header-context', {
+        detail: {
+          showBack: true,
+          buttons: [
+            { id: 'delete', label: 'Delete', tone: 'danger' },
+            { id: 'save', label: 'Save', tone: 'primary' },
+          ],
+        },
+      })
+    );
+
+    const handleHeaderBack = () => {
+      setEditingLog(null);
+    };
+
+    const handleHeaderAction = async (event: Event) => {
+      const actionId = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (!actionId) return;
+      if (actionId === 'delete') {
+        await handleDelete(editingLog.id);
+        setEditingLog(null);
+        return;
+      }
+      if (actionId === 'save') {
+        await savePopupEdit();
+      }
+    };
+
+    window.addEventListener('macrometric:header-back', handleHeaderBack);
+    window.addEventListener('macrometric:header-action', handleHeaderAction as EventListener);
+
+    return () => {
+      window.removeEventListener('macrometric:header-back', handleHeaderBack);
+      window.removeEventListener('macrometric:header-action', handleHeaderAction as EventListener);
+      window.dispatchEvent(new CustomEvent('macrometric:header-context', { detail: null }));
+    };
+  }, [editingLog, userId, editQuantityInput, editQuantityType]);
+
+  useEffect(() => {
     // New date => clear row selection/edit state to avoid stale selected count.
     setSelectedIds(new Set());
     setInlineEdit(null);
@@ -186,6 +228,30 @@ export default function FoodEntries() {
     setEditQuantity(currentGrams);
     setEditQuantityInput(String(currentGrams));
     setEditQuantityType('grams');
+  };
+
+  const openFoodEditor = (log: FoodLog) => {
+    const params = new URLSearchParams();
+    params.set('logDate', date);
+
+    if (log.foodId) {
+      params.set('editFoodId', log.foodId);
+    } else {
+      params.set('newFoodName', log.name || '');
+      params.set('newFoodBrand', log.brand || '');
+      params.set('newCalories', String(Number(log.calories) || 0));
+      params.set('newProtein', String(Number(log.protein) || 0));
+      params.set('newCarbs', String(Number(log.carbs) || 0));
+      params.set('newFat', String(Number(log.fat) || 0));
+      params.set('newServing', log.serving || '100g');
+      params.set('newServingSize', String(Number(log.servingSize) || 100));
+      params.set('newNetCarbs', String(Number(log.netCarbs) || Number(log.carbs) || 0));
+      params.set('newPackageWeight', String(Number(log.packageWeight) || 0));
+      params.set('newPackageCount', String(Number(log.packageCount) || 0));
+    }
+
+    // Force a clean page switch so the food edit page is shown standalone.
+    window.location.assign(`/my-foods?${params.toString()}`);
   };
 
   const savePopupEdit = async () => {
@@ -351,15 +417,22 @@ export default function FoodEntries() {
 
     return (
       <div className="space-y-4">
-        <button
-          onClick={() => setEditingLog(null)}
-          className="text-primary-600 dark:text-blue-400 font-medium flex items-center gap-1"
-        >
-          Back
-        </button>
-
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-1">{editingLog.name}</h2>
+          <div className="flex items-start justify-between gap-3 mb-1">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{editingLog.name}</h2>
+            <button
+              type="button"
+              onClick={() => openFoodEditor(editingLog)}
+              className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+              aria-label={`Edit food item ${editingLog.name}`}
+              title="Edit food item"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4" aria-hidden="true">
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+              </svg>
+            </button>
+          </div>
           <p className="text-gray-500 dark:text-gray-400 mb-4">Tap to adjust amount</p>
 
           <div className="mb-4">
@@ -428,24 +501,6 @@ export default function FoodEntries() {
               <div className="text-lg font-bold text-amber-600 dark:text-amber-400">{calcCarbs}g</div>
               <div className="text-xs text-gray-500 dark:text-gray-400">Carbs</div>
             </div>
-          </div>
-
-          <div className="flex gap-3">
-            <button
-              onClick={async () => {
-                await handleDelete(editingLog.id);
-                setEditingLog(null);
-              }}
-              className="flex-1 py-3 bg-red-500 text-white font-semibold rounded-xl hover:bg-red-600 transition-colors"
-            >
-              Delete
-            </button>
-            <button
-              onClick={savePopupEdit}
-              className="flex-1 py-3 bg-primary-500 text-white font-semibold rounded-xl hover:bg-primary-600 transition-colors"
-            >
-              Save
-            </button>
           </div>
         </div>
       </div>
@@ -547,12 +602,12 @@ export default function FoodEntries() {
                         onChange={() => toggleSelect(log.id)}
                       />
                     </td>
-                    {(['name'] as EditableField[]).map(field => (
-                      <td key={field} className="px-2 py-2 whitespace-nowrap">
-                        {inlineEdit?.id === log.id && inlineEdit.field === field ? (
+                    <td className="px-2 py-2 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        {inlineEdit?.id === log.id && inlineEdit.field === 'name' ? (
                           <input
                             autoFocus
-                            type={['calories', 'protein', 'carbs', 'fat', 'quantity'].includes(field) ? 'number' : 'text'}
+                            type="text"
                             value={inlineValue}
                             onChange={(e) => setInlineValue(e.target.value)}
                             onBlur={() => saveInlineEdit(log)}
@@ -564,14 +619,26 @@ export default function FoodEntries() {
                           />
                         ) : (
                           <button
-                            onClick={() => startInlineEdit(log, field)}
+                            onClick={() => startInlineEdit(log, 'name')}
                             className="hover:underline text-left"
                           >
-                            {(log as any)[field] ?? '-'}
+                            {log.name ?? '-'}
                           </button>
                         )}
-                      </td>
-                    ))}
+                        <button
+                          type="button"
+                          onClick={() => openFoodEditor(log)}
+                          className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                          aria-label={`Edit food item ${log.name}`}
+                          title="Edit food item"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5" aria-hidden="true">
+                            <path d="M12 20h9" />
+                            <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                          </svg>
+                        </button>
+                      </div>
+                    </td>
                     <td className="px-2 py-2 whitespace-nowrap">
                       <button
                         onClick={() => openEditPopup(log)}

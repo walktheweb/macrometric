@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { getLogs, getGoals, deleteLog, updateLog, DayLog, Goal, FoodLog, getTodayCheckin, saveCheckin, getCheckins, getTrips, getRaceGoal, getDaysUntilRace, RaceGoal, getStepGoal, Checkin, getToday } from '../lib/api';
+import { getLogs, getGoals, deleteLog, updateLog, DayLog, Goal, FoodLog, getTodayCheckin, saveCheckin, getCheckins, getTrips, getRaceGoal, getDaysUntilRace, RaceGoal, getStepGoal, Checkin, getToday, deleteCheckin } from '../lib/api';
 import { formatDateDDMMYYYY } from '../lib/date';
 import RaceProgress from '../components/RaceProgress';
 import TripWidget from '../components/TripWidget';
@@ -214,6 +214,71 @@ export default function Dashboard() {
   }, [editingLog, showCheckin]);
 
   useEffect(() => {
+    if (!editingLog && !showCheckin) return;
+
+    const checkinHasExistingId = !!(checkinData.id || editingCheckin?.id);
+    const headerContext = editingLog
+      ? {
+          showBack: true,
+          buttons: [
+            { id: 'delete', label: 'Delete', tone: 'danger' },
+            { id: 'save', label: 'Save', tone: 'primary' },
+          ],
+        }
+      : {
+          showBack: true,
+          buttons: checkinHasExistingId
+            ? [
+                { id: 'delete-checkin', label: 'Delete', tone: 'danger' },
+                { id: 'save-checkin', label: 'Save', tone: 'primary' },
+              ]
+            : [{ id: 'save-checkin', label: 'Save', tone: 'primary' }],
+        };
+
+    window.dispatchEvent(new CustomEvent('macrometric:header-context', { detail: headerContext }));
+
+    const handleHeaderBack = () => {
+      if (editingLog) {
+        setEditingLog(null);
+        return;
+      }
+      if (showCheckin) {
+        handleCloseCheckinEditor();
+      }
+    };
+
+    const handleHeaderAction = async (event: Event) => {
+      const actionId = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (!actionId) return;
+      if (actionId === 'delete' && editingLog) {
+        handleDelete(editingLog.id);
+        setEditingLog(null);
+        return;
+      }
+      if (actionId === 'save' && editingLog) {
+        await saveEdit();
+        return;
+      }
+      if (actionId === 'delete-checkin' && showCheckin) {
+        await handleDeleteCurrentCheckin();
+        return;
+      }
+      if (actionId === 'save-checkin' && showCheckin) {
+        await handleSaveCheckin();
+      }
+    };
+
+    window.addEventListener('macrometric:header-back', handleHeaderBack);
+    window.addEventListener('macrometric:header-action', handleHeaderAction as EventListener);
+
+    return () => {
+      window.removeEventListener('macrometric:header-back', handleHeaderBack);
+      window.removeEventListener('macrometric:header-action', handleHeaderAction as EventListener);
+      window.dispatchEvent(new CustomEvent('macrometric:header-context', { detail: null }));
+    };
+  }, [editingLog, showCheckin, checkinData]);
+
+  useEffect(() => {
     if (!editCheckinId || checkins.length === 0) return;
     const target = checkins.find((c) => c.id === editCheckinId);
     if (!target) return;
@@ -293,30 +358,56 @@ export default function Dashboard() {
   };
 
   const openEdit = (log: FoodLog) => {
+    const servingSize = Number(log.servingSize) || 100;
+    const currentRatio = log.quantity || 1;
+    const currentGrams = Math.round(currentRatio * servingSize * 100) / 100;
     setEditingLog(log);
-    setEditQuantity(log.quantity || 1);
-    setEditQuantityInput((log.quantity || 1).toString());
+    setEditQuantity(currentGrams);
+    setEditQuantityInput(String(currentGrams));
     setEditQuantityType('grams');
+  };
+
+  const openFoodEditorFromToday = (log: FoodLog) => {
+    const params = new URLSearchParams();
+    params.set('logDate', currentDay);
+
+    if (log.foodId) {
+      params.set('editFoodId', log.foodId);
+    } else {
+      params.set('newFoodName', log.name || '');
+      params.set('newFoodBrand', log.brand || '');
+      params.set('newCalories', String(Number(log.calories) || 0));
+      params.set('newProtein', String(Number(log.protein) || 0));
+      params.set('newCarbs', String(Number(log.carbs) || 0));
+      params.set('newFat', String(Number(log.fat) || 0));
+      params.set('newServing', log.serving || '100g');
+      params.set('newServingSize', String(Number(log.servingSize) || 100));
+      params.set('newNetCarbs', String(Number(log.netCarbs) || Number(log.carbs) || 0));
+      params.set('newPackageWeight', String(Number(log.packageWeight) || 0));
+      params.set('newPackageCount', String(Number(log.packageCount) || 0));
+    }
+
+    setEditingLog(null);
+    window.location.assign(`/my-foods?${params.toString()}`);
   };
 
   const saveEdit = async () => {
     if (!editingLog || !userId) return;
 
-    const parsed = Number(editQuantityInput);
+    const servingSize = Number(editingLog.servingSize) || 100;
+    const parsed = Number(editQuantityInput.replace(',', '.'));
     const safeQuantity = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-    const quantityToSave = editQuantityType === 'grams' ? safeQuantity : Math.max(1, Math.floor(safeQuantity));
+    const quantityInput = editQuantityType === 'grams' ? safeQuantity : Math.max(1, Math.floor(safeQuantity));
+    const quantityToSave = editQuantityType === 'grams' ? quantityInput / servingSize : quantityInput;
     
-    const baseMacros = editingLog.baseMacros || {
-      calories: editingLog.calories / (editingLog.quantity || 1),
-      protein: editingLog.protein / (editingLog.quantity || 1),
-      carbs: editingLog.carbs / (editingLog.quantity || 1),
-      fat: editingLog.fat / (editingLog.quantity || 1),
+    const baseMacros = {
+      calories: (Number(editingLog.calories) || 0) / (Number(editingLog.quantity) || 1),
+      protein: (Number(editingLog.protein) || 0) / (Number(editingLog.quantity) || 1),
+      carbs: (Number(editingLog.carbs) || 0) / (Number(editingLog.quantity) || 1),
+      fat: (Number(editingLog.fat) || 0) / (Number(editingLog.quantity) || 1),
     };
     
-    let multiplier = quantityToSave;
-    if (editQuantityType === 'grams') {
-      multiplier = quantityToSave / 100;
-    }
+    const multiplier = quantityToSave;
     
     const updatedLog = {
       ...editingLog,
@@ -326,11 +417,11 @@ export default function Dashboard() {
       protein: Math.round(baseMacros.protein * multiplier * 10) / 10,
       carbs: Math.round(baseMacros.carbs * multiplier * 10) / 10,
       fat: Math.round(baseMacros.fat * multiplier * 10) / 10,
-      serving: editQuantityType === 'grams' ? `${quantityToSave}g` : `${quantityToSave}`,
+      serving: editQuantityType === 'grams' ? `${quantityInput}g` : `${quantityInput}`,
     };
     
-    setEditQuantity(quantityToSave);
-    setEditQuantityInput(quantityToSave.toString());
+    setEditQuantity(quantityInput);
+    setEditQuantityInput(quantityInput.toString());
     await updateLog(userId, editingLog.id, updatedLog);
     setEditingLog(null);
     loadData();
@@ -365,6 +456,18 @@ export default function Dashboard() {
       ferritin: checkinData.ferritin ? Number(checkinData.ferritin) : undefined,
       notes: checkinData.notes || undefined,
     });
+    setShowCheckin(false);
+    setEditingCheckin(null);
+    clearEditCheckinParam();
+    loadData();
+  };
+
+  const handleDeleteCurrentCheckin = async () => {
+    if (!userId) return;
+    const targetId = checkinData.id || editingCheckin?.id;
+    if (!targetId) return;
+    if (!confirm('Delete this check-in?')) return;
+    await deleteCheckin(userId, targetId);
     setShowCheckin(false);
     setEditingCheckin(null);
     clearEditCheckinParam();
@@ -418,17 +521,18 @@ export default function Dashboard() {
   const todaySteps = todayCheckins.reduce((sum, c) => sum + (c.steps || 0), 0);
 
   if (editingLog) {
-    const baseMacros = editingLog.baseMacros || {
-      calories: editingLog.calories / (editingLog.quantity || 1),
-      protein: editingLog.protein / (editingLog.quantity || 1),
-      carbs: editingLog.carbs / (editingLog.quantity || 1),
-      fat: editingLog.fat / (editingLog.quantity || 1),
+    const servingSize = Number(editingLog.servingSize) || 100;
+    const baseMacros = {
+      calories: (Number(editingLog.calories) || 0) / (Number(editingLog.quantity) || 1),
+      protein: (Number(editingLog.protein) || 0) / (Number(editingLog.quantity) || 1),
+      carbs: (Number(editingLog.carbs) || 0) / (Number(editingLog.quantity) || 1),
+      fat: (Number(editingLog.fat) || 0) / (Number(editingLog.quantity) || 1),
     };
-    const parsedPreview = Number(editQuantityInput);
+    const parsedPreview = Number(editQuantityInput.replace(',', '.'));
     const previewQuantity = Number.isFinite(parsedPreview) && parsedPreview > 0
       ? (editQuantityType === 'grams' ? parsedPreview : Math.max(1, Math.floor(parsedPreview)))
       : editQuantity;
-    const multiplier = editQuantityType === 'grams' ? previewQuantity / 100 : previewQuantity;
+    const multiplier = editQuantityType === 'grams' ? previewQuantity / servingSize : previewQuantity;
     const calcCals = Math.round(baseMacros.calories * multiplier);
     const calcProtein = Math.round(baseMacros.protein * multiplier);
     const calcCarbs = Math.round(baseMacros.carbs * multiplier);
@@ -436,15 +540,19 @@ export default function Dashboard() {
 
     return (
       <div className="space-y-4">
-        <button
-          onClick={() => setEditingLog(null)}
-          className="text-primary-600 dark:text-blue-400 font-medium flex items-center gap-1"
-        >
-          Back
-        </button>
-        
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-1">{editingLog.name}</h2>
+          <div className="mb-1 flex items-start justify-between gap-3">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{editingLog.name}</h2>
+            <button
+              type="button"
+              onClick={() => openFoodEditorFromToday(editingLog)}
+              className="inline-flex items-center justify-center rounded-md p-1 text-blue-500 hover:bg-blue-50 hover:text-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/30 dark:hover:text-blue-300"
+              aria-label={`Edit food item ${editingLog.name}`}
+              title="Edit food item"
+            >
+              <MaterialIcon name="edit" className="text-[20px]" />
+            </button>
+          </div>
           <p className="text-gray-500 dark:text-gray-400 mb-4">Tap to adjust amount</p>
           
           <div className="mb-4">
@@ -474,16 +582,17 @@ export default function Dashboard() {
             
             <div className="flex items-center gap-2">
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 autoFocus
                 value={editQuantityInput}
-                onChange={(e) => setEditQuantityInput(e.target.value)}
+                onChange={(e) => setEditQuantityInput(e.target.value.replace(',', '.'))}
                 onBlur={() => {
-                  const parsed = Number(editQuantityInput);
+                  const parsed = Number(editQuantityInput.replace(',', '.'));
                   const safe = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
                   const normalized = editQuantityType === 'grams' ? safe : Math.max(1, Math.floor(safe));
                   setEditQuantity(normalized);
-                  setEditQuantityInput(normalized.toString());
+                  setEditQuantityInput(String(normalized));
                 }}
                 min={1}
                 step={editQuantityType === 'grams' ? 10 : 1}
@@ -513,24 +622,6 @@ export default function Dashboard() {
               <div className="text-xs text-gray-500 dark:text-gray-400">Carbs</div>
             </div>
           </div>
-          
-          <div className="flex gap-3">
-            <button
-              onClick={() => {
-                handleDelete(editingLog.id);
-                setEditingLog(null);
-              }}
-              className="flex-1 py-3 bg-red-500 text-white font-semibold rounded-xl hover:bg-red-600 transition-colors"
-            >
-              Delete
-            </button>
-            <button
-              onClick={saveEdit}
-              className="flex-1 py-3 bg-primary-500 text-white font-semibold rounded-xl hover:bg-primary-600 transition-colors"
-            >
-              Save
-            </button>
-          </div>
         </div>
       </div>
     );
@@ -539,41 +630,18 @@ export default function Dashboard() {
   if (showCheckin) {
     return (
       <div className="space-y-4">
-        <button
-          onClick={handleCloseCheckinEditor}
-          className="text-primary-600 dark:text-blue-400 font-medium flex items-center gap-1"
-        >
-          Back
-        </button>
-        
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-1">
-            {editingCheckin ? 'Edit Check-in' : 'Daily Check-in'}
-          </h2>
-          <p className="text-gray-500 dark:text-gray-400 mb-4">{formatDateDDMMYYYY(checkinData.date)}</p>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+              {editingCheckin ? 'Edit Check-in' : 'Daily Check-in'}
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{formatDateDDMMYYYY(checkinData.date)}</p>
+          </div>
           
           <div className="space-y-3">
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
               <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Check-in Basics</div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Date</label>
-                  <input
-                    type="date"
-                    value={checkinData.date}
-                    onChange={(e) => setCheckinData({...checkinData, date: e.target.value})}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Time</label>
-                  <input
-                    type="time"
-                    value={checkinData.checkinTime}
-                    onChange={(e) => setCheckinData({...checkinData, checkinTime: e.target.value})}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-                  />
-                </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Steps</label>
                   <input
@@ -592,6 +660,24 @@ export default function Dashboard() {
                     value={checkinData.weight}
                     onChange={(e) => setCheckinData({...checkinData, weight: e.target.value})}
                     placeholder="83.5"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Date</label>
+                  <input
+                    type="date"
+                    value={checkinData.date}
+                    onChange={(e) => setCheckinData({...checkinData, date: e.target.value})}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Time</label>
+                  <input
+                    type="time"
+                    value={checkinData.checkinTime}
+                    onChange={(e) => setCheckinData({...checkinData, checkinTime: e.target.value})}
                     className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
                   />
                 </div>
@@ -703,12 +789,6 @@ export default function Dashboard() {
             </div>
           </div>
           
-          <button
-            onClick={handleSaveCheckin}
-            className="w-full mt-6 py-3 bg-primary-500 text-white font-semibold rounded-xl hover:bg-primary-600 transition-colors"
-          >
-            Save Check-in
-          </button>
         </div>
       </div>
     );
@@ -748,6 +828,32 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {todayCheckins.length > 0 && (
+        <div className="bg-purple-50 dark:bg-purple-900/20 rounded-2xl shadow-sm p-4 border border-purple-100 dark:border-purple-800">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-lg font-semibold text-gray-800 dark:text-gray-100">Today's Check-in</span>
+            <button 
+              onClick={() => setShowCheckin(true)}
+              className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-200"
+            >
+              Edit
+            </button>
+          </div>
+          <div className="grid grid-cols-4 gap-2 text-xs">
+            {todayCheckins[0]?.weight && <div className="text-center"><span className="font-semibold">{todayCheckins[0].weight}</span> kg</div>}
+            {todayCheckins[0]?.ketones && <div className="text-center"><span className="font-semibold">{todayCheckins[0].ketones}</span> ketones</div>}
+            {todayCheckins[0]?.glucose && <div className="text-center"><span className="font-semibold">{todayCheckins[0].glucose}</span> glucose</div>}
+            {todayCheckins[0]?.heartRate && <div className="text-center"><span className="font-semibold">{todayCheckins[0].heartRate}</span> HR</div>}
+            {todayCheckins[0]?.bpHigh && todayCheckins[0]?.bpLow && (
+              <div className="text-center"><span className="font-semibold">{todayCheckins[0].bpHigh}/{todayCheckins[0].bpLow}</span> BP</div>
+            )}
+            {todayCheckins[0]?.saturation && <div className="text-center"><span className="font-semibold">{todayCheckins[0].saturation}</span> sat%</div>}
+            {todayCheckins[0]?.cholesterol && <div className="text-center"><span className="font-semibold">{todayCheckins[0].cholesterol}</span> chol</div>}
+            {todayCheckins[0]?.ferritin && <div className="text-center"><span className="font-semibold">{todayCheckins[0].ferritin}</span> ferr</div>}
+          </div>
+        </div>
+      )}
 
       {/* BMI Card - from last known weight */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5">
@@ -861,78 +967,52 @@ export default function Dashboard() {
         <MacroBar label="Carbs" current={totals.carbs} goal={goalsData.carbs} color="bg-amber-500" splitPercent={splitCarbsPct} />
       </div>
 
-      {todayCheckins.length > 0 && (
-        <div className="bg-purple-50 dark:bg-purple-900/20 rounded-2xl shadow-sm p-4 border border-purple-100 dark:border-purple-800">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-lg font-semibold text-gray-800 dark:text-gray-100">Today's Check-in</span>
-            <button 
-              onClick={() => setShowCheckin(true)}
-              className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-200"
-            >
-              Edit
-            </button>
-          </div>
-          <div className="grid grid-cols-4 gap-2 text-xs">
-            {todayCheckins[0]?.weight && <div className="text-center"><span className="font-semibold">{todayCheckins[0].weight}</span> kg</div>}
-            {todayCheckins[0]?.ketones && <div className="text-center"><span className="font-semibold">{todayCheckins[0].ketones}</span> ketones</div>}
-            {todayCheckins[0]?.glucose && <div className="text-center"><span className="font-semibold">{todayCheckins[0].glucose}</span> glucose</div>}
-            {todayCheckins[0]?.heartRate && <div className="text-center"><span className="font-semibold">{todayCheckins[0].heartRate}</span> HR</div>}
-            {todayCheckins[0]?.bpHigh && todayCheckins[0]?.bpLow && (
-              <div className="text-center"><span className="font-semibold">{todayCheckins[0].bpHigh}/{todayCheckins[0].bpLow}</span> BP</div>
-            )}
-            {todayCheckins[0]?.saturation && <div className="text-center"><span className="font-semibold">{todayCheckins[0].saturation}</span> sat%</div>}
-            {todayCheckins[0]?.cholesterol && <div className="text-center"><span className="font-semibold">{todayCheckins[0].cholesterol}</span> chol</div>}
-            {todayCheckins[0]?.ferritin && <div className="text-center"><span className="font-semibold">{todayCheckins[0].ferritin}</span> ferr</div>}
-          </div>
-        </div>
-      )}
-
-      <div className="flex gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <Link
           to="/add"
-          className="flex-1 py-3 bg-primary-500 text-white font-semibold rounded-xl text-center shadow-sm hover:bg-primary-600 transition-colors"
+          className="py-3 bg-primary-500 text-white rounded-xl text-center shadow-sm hover:bg-primary-600 transition-colors"
+          title="Add Food"
+          aria-label="Add Food"
         >
-          + Add Food
+          <span className="inline-flex items-center justify-center">
+            <MaterialIcon name="add_circle" className="text-[24px]" />
+          </span>
         </Link>
         <button
           onClick={() => setShowCheckin(true)}
-          className="flex-1 py-3 bg-purple-500 text-white font-semibold rounded-xl shadow-sm hover:bg-purple-600 transition-colors"
+          className="py-3 bg-purple-500 text-white rounded-xl shadow-sm hover:bg-purple-600 transition-colors"
+          title="Check-in"
+          aria-label="Check-in"
         >
-          Check-in
+          <span className="inline-flex items-center justify-center">
+            <MaterialIcon name="monitor_heart" className="text-[24px]" />
+          </span>
         </button>
         <Link
           to="/presets"
-          className="flex-1 py-3 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-semibold rounded-xl text-center hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+          className="py-3 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-xl text-center hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+          title="Quick Add"
+          aria-label="Quick Add"
         >
-          Quick Add
+          <span className="inline-flex items-center justify-center">
+            <MaterialIcon name="bolt" className="text-[24px]" />
+          </span>
         </Link>
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-100 dark:border-gray-600">
-          <div className="flex items-center justify-between">
-            <div>
-              <span className="text-lg font-semibold text-gray-800 dark:text-gray-100">Today's Foods</span>
-              <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">
-                ({logs?.logs.length || 0} items)
-              </span>
-            </div>
-            <div className="w-8 shrink-0 flex justify-end">
-              <Link
-                to={`/food-entries?date=${currentDay}`}
-                className="text-primary-500 dark:text-blue-400 hover:text-primary-600 dark:hover:text-blue-300 transition-colors"
-                title="Open Entry Manager"
-                aria-label="Open Entry Manager"
-              >
-                <MaterialIcon name="edit" className="text-[18px]" />
-              </Link>
-            </div>
+          <div>
+            <span className="text-lg font-semibold text-gray-800 dark:text-gray-100">Today's Foods</span>
+            <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">
+              ({logs?.logs.length || 0} items)
+            </span>
           </div>
         </div>
         
         {(!logs || logs.logs.length === 0) ? (
           <div className="px-4 py-8 text-center text-gray-400 dark:text-gray-500">
-            No foods logged yet. Tap "+ Add Food" to start tracking!
+            No foods logged yet. Tap the add icon to start tracking.
           </div>
         ) : (
           <div className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -949,19 +1029,16 @@ export default function Dashboard() {
                     {log.serving}
                   </div>
                 </div>
-                <div className="w-16 shrink-0 text-right">
+                <div className="w-14 shrink-0 text-right">
                   <div className="font-semibold tabular-nums text-gray-900 dark:text-gray-100">{Math.round(log.calories)}</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">kcal</div>
                 </div>
-                <div className="w-32 shrink-0 text-right">
-                  <div className="flex justify-end gap-2 text-xs font-medium tabular-nums whitespace-nowrap">
-                    <span className="text-blue-500 dark:text-blue-400">F:{Math.round(log.fat)}</span>
-                    <span className="text-red-500 dark:text-red-400">P:{Math.round(log.protein)}</span>
-                    <span className="text-amber-500 dark:text-amber-400">C:{Math.round(log.netCarbs && log.netCarbs > 0 ? log.netCarbs : log.carbs)}</span>
+                <div className="w-12 shrink-0 text-right">
+                  <div className="text-[11px] font-medium tabular-nums leading-tight">
+                    <div className="text-blue-500 dark:text-blue-400">F {Math.round(log.fat)}</div>
+                    <div className="text-red-500 dark:text-red-400">P {Math.round(log.protein)}</div>
+                    <div className="text-amber-500 dark:text-amber-400">C {Math.round(log.netCarbs && log.netCarbs > 0 ? log.netCarbs : log.carbs)}</div>
                   </div>
-                </div>
-                <div className="w-8 shrink-0 flex justify-end text-primary-500 dark:text-blue-400">
-                  <MaterialIcon name="edit" className="text-[18px]" />
                 </div>
               </button>
             ))}

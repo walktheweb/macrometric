@@ -213,32 +213,52 @@ export async function getLogs(userId: string, date?: string): Promise<DayLog> {
   if (foodIds.length > 0) {
     const { data: myFoods } = await supabase
       .from('my_foods')
-      .select('id, name, brand')
+      .select('id, name, brand, calories, protein, carbs, fat, serving_size, net_carbs, package_weight, package_count')
       .eq('user_id', userId)
       .in('id', foodIds);
 
     myFoodsById = Object.fromEntries((myFoods || []).map((f: any) => [f.id, f]));
   }
 
-  const filtered = logs.map(log => ({
-    ...(myFoodsById[log.food_id] ? {
-      name: myFoodsById[log.food_id].name,
-      brand: myFoodsById[log.food_id].brand,
-    } : {}),
-    ...log,
-    id: log.id,
-    foodId: log.food_id || undefined,
-    name: myFoodsById[log.food_id]?.name || log.name || '',
-    brand: myFoodsById[log.food_id]?.brand || log.brand || null,
-    calories: log.calories || 0,
-    protein: log.protein || 0,
-    carbs: log.carbs || 0,
-    fat: log.fat || 0,
-    serving: log.serving || '1 serving',
-    quantity: log.quantity || 1,
-    date: log.date,
-    createdAt: log.created_at,
-  }));
+  const filtered = logs.map(log => {
+    const linkedFood = myFoodsById[log.food_id] || null;
+    const quantity = Number(log.quantity) || 1;
+    const loggedCalories = Number(log.calories) || 0;
+    const loggedProtein = Number(log.protein) || 0;
+    const loggedCarbs = Number(log.carbs) || 0;
+    const loggedFat = Number(log.fat) || 0;
+    const hasLoggedMacros = loggedCalories > 0 || loggedProtein > 0 || loggedCarbs > 0 || loggedFat > 0;
+
+    const foodCalories = Number(linkedFood?.calories) || 0;
+    const foodProtein = Number(linkedFood?.protein) || 0;
+    const foodCarbs = Number(linkedFood?.carbs) || 0;
+    const foodFat = Number(linkedFood?.fat) || 0;
+
+    const calories = hasLoggedMacros ? loggedCalories : Math.round(foodCalories * quantity * 10) / 10;
+    const protein = hasLoggedMacros ? loggedProtein : Math.round(foodProtein * quantity * 10) / 10;
+    const carbs = hasLoggedMacros ? loggedCarbs : Math.round(foodCarbs * quantity * 10) / 10;
+    const fat = hasLoggedMacros ? loggedFat : Math.round(foodFat * quantity * 10) / 10;
+
+    return {
+      ...log,
+      id: log.id,
+      foodId: log.food_id || undefined,
+      name: linkedFood?.name || log.name || '',
+      brand: linkedFood?.brand || log.brand || null,
+      calories,
+      protein,
+      carbs,
+      fat,
+      serving: log.serving || '1 serving',
+      servingSize: Number(log.serving_size) || Number(linkedFood?.serving_size) || undefined,
+      netCarbs: Number(log.net_carbs) || Number(linkedFood?.net_carbs) || undefined,
+      packageWeight: Number(log.package_weight) || Number(linkedFood?.package_weight) || undefined,
+      packageCount: Number(log.package_count) || Number(linkedFood?.package_count) || undefined,
+      quantity,
+      date: log.date,
+      createdAt: log.created_at,
+    };
+  });
   
   const totals = filtered.reduce(
     (acc, log) => ({
@@ -1224,6 +1244,7 @@ export async function saveEventGoalItem(
 
   if (error) {
     console.error('Error saving event goal item:', error);
+    throw new Error(error.message || 'Failed to save event goal');
   }
 
   return {
@@ -1247,6 +1268,7 @@ export async function deleteEventGoalItem(userId: string, id: string): Promise<v
 
   if (error) {
     console.error('Error deleting event goal item:', error);
+    throw new Error(error.message || 'Failed to delete event goal');
   }
 }
 
@@ -1261,7 +1283,7 @@ export async function setPrimaryEventGoal(userId: string, id: string): Promise<v
 
   if (selectedError || !selected) {
     console.error('Error loading selected event goal:', selectedError);
-    return;
+    throw new Error(selectedError?.message || 'Selected event goal not found');
   }
 
   const selectedGoal: EventGoalItem = {
@@ -1293,6 +1315,7 @@ export async function setPrimaryEventGoal(userId: string, id: string): Promise<v
     const { error: savePrevError } = await supabase.from('event_goals').insert(previousPrimaryInsert);
     if (savePrevError) {
       console.error('Error archiving previous primary event goal:', savePrevError);
+      throw new Error(savePrevError.message || 'Failed to archive active event goal');
     }
   }
 
@@ -1311,6 +1334,7 @@ export async function setPrimaryEventGoal(userId: string, id: string): Promise<v
 
   if (deleteSelectedError) {
     console.error('Error deleting selected event goal after activation:', deleteSelectedError);
+    throw new Error(deleteSelectedError.message || 'Failed to finalize active event goal');
   }
 }
 

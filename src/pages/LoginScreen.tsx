@@ -3,7 +3,7 @@ import { getAuthStorageMode, setAuthStorageMode, supabase } from '../lib/supabas
 import MaterialIcon from '../components/MaterialIcon';
 
 const getVersionString = () => {
-  return '1.1.0';
+  return '1.2.1';
 };
 
 export default function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {

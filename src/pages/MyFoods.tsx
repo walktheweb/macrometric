@@ -33,7 +33,7 @@ type SortKey =
 
 export default function MyFoods() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { userId, loading: authLoading } = useAuth();
   const [allFoods, setAllFoods] = useState<Food[]>([]);
   const [search, setSearch] = useState('');
@@ -56,6 +56,19 @@ export default function MyFoods() {
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const editFoodIdParam = searchParams.get('editFoodId');
+  const deepLinkHandledRef = useRef<string>('');
+  const newFoodNameParam = searchParams.get('newFoodName');
+  const newFoodBrandParam = searchParams.get('newFoodBrand');
+  const newCaloriesParam = searchParams.get('newCalories');
+  const newProteinParam = searchParams.get('newProtein');
+  const newCarbsParam = searchParams.get('newCarbs');
+  const newFatParam = searchParams.get('newFat');
+  const newServingParam = searchParams.get('newServing');
+  const newServingSizeParam = searchParams.get('newServingSize');
+  const newNetCarbsParam = searchParams.get('newNetCarbs');
+  const newPackageWeightParam = searchParams.get('newPackageWeight');
+  const newPackageCountParam = searchParams.get('newPackageCount');
   const [formData, setFormData] = useState<Food>({
     id: '',
     name: '',
@@ -77,10 +90,109 @@ export default function MyFoods() {
   }, [userId]);
 
   useEffect(() => {
+    if (!showForm) return;
+
+    window.dispatchEvent(
+      new CustomEvent('macrometric:header-context', {
+        detail: {
+          showBack: true,
+          buttons: [{ id: 'save-food', label: editingFood ? 'Save' : 'Add', tone: 'primary' }],
+        },
+      })
+    );
+
+    const handleHeaderBack = () => {
+      setShowForm(false);
+    };
+
+    const handleHeaderAction = async (event: Event) => {
+      const actionId = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (actionId === 'save-food') {
+        await handleSave();
+      }
+    };
+
+    window.addEventListener('macrometric:header-back', handleHeaderBack);
+    window.addEventListener('macrometric:header-action', handleHeaderAction as EventListener);
+
+    return () => {
+      window.removeEventListener('macrometric:header-back', handleHeaderBack);
+      window.removeEventListener('macrometric:header-action', handleHeaderAction as EventListener);
+      window.dispatchEvent(new CustomEvent('macrometric:header-context', { detail: null }));
+    };
+  }, [showForm, editingFood, formData, userId]);
+
+  useEffect(() => {
     const logDateParam = searchParams.get('logDate');
     if (!logDateParam || !/^\d{4}-\d{2}-\d{2}$/.test(logDateParam)) return;
     if (logDateParam !== logDate) setLogDate(logDateParam);
   }, [searchParams, logDate]);
+
+  useEffect(() => {
+    const deepLinkKey = searchParams.toString();
+    if (!deepLinkKey || deepLinkHandledRef.current === deepLinkKey) return;
+
+    if (editFoodIdParam && allFoods.length > 0) {
+      const targetFood = allFoods.find((food) => food.id === editFoodIdParam);
+      if (targetFood) {
+        openEditForm(targetFood);
+      }
+      const next = new URLSearchParams(searchParams);
+      next.delete('editFoodId');
+      setSearchParams(next, { replace: true });
+      deepLinkHandledRef.current = deepLinkKey;
+      return;
+    }
+
+    if (newFoodNameParam) {
+      setEditingFood(null);
+      setFormData({
+        id: '',
+        name: newFoodNameParam,
+        brand: newFoodBrandParam || null,
+        calories: Number(newCaloriesParam) || 0,
+        protein: Number(newProteinParam) || 0,
+        carbs: Number(newCarbsParam) || 0,
+        fat: Number(newFatParam) || 0,
+        serving: newServingParam || '100g',
+        servingSize: Number(newServingSizeParam) || 100,
+        netCarbs: Number(newNetCarbsParam) || Number(newCarbsParam) || 0,
+        packageWeight: Number(newPackageWeightParam) || 0,
+        packageCount: Number(newPackageCountParam) || 0,
+      });
+      setShowForm(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('newFoodName');
+      next.delete('newFoodBrand');
+      next.delete('newCalories');
+      next.delete('newProtein');
+      next.delete('newCarbs');
+      next.delete('newFat');
+      next.delete('newServing');
+      next.delete('newServingSize');
+      next.delete('newNetCarbs');
+      next.delete('newPackageWeight');
+      next.delete('newPackageCount');
+      setSearchParams(next, { replace: true });
+      deepLinkHandledRef.current = deepLinkKey;
+    }
+  }, [
+    searchParams,
+    setSearchParams,
+    editFoodIdParam,
+    allFoods,
+    newFoodNameParam,
+    newFoodBrandParam,
+    newCaloriesParam,
+    newProteinParam,
+    newCarbsParam,
+    newFatParam,
+    newServingParam,
+    newServingSizeParam,
+    newNetCarbsParam,
+    newPackageWeightParam,
+    newPackageCountParam,
+  ]);
 
   const loadFoods = async () => {
     if (!userId) return;
@@ -447,13 +559,6 @@ export default function MyFoods() {
   if (showForm) {
     return (
       <div className="space-y-4">
-        <button
-          onClick={() => setShowForm(false)}
-          className="text-primary-600 dark:text-blue-400 font-medium flex items-center gap-1"
-        >
-          Back to Food Manager
-        </button>
-        
         <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl shadow-sm p-5 border border-blue-100 dark:border-blue-800">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
@@ -524,32 +629,6 @@ export default function MyFoods() {
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-xl p-4 mb-4">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Package Info</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Package Weight (g)</label>
-                <input
-                  type="number"
-                  value={formData.packageWeight || ''}
-                  onChange={(e) => setFormData({ ...formData, packageWeight: Number(e.target.value) || 0 })}
-                  placeholder="e.g. 500"
-                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Items in Package</label>
-                <input
-                  type="number"
-                  value={formData.packageCount || ''}
-                  onChange={(e) => setFormData({ ...formData, packageCount: Number(e.target.value) || 0 })}
-                  placeholder="e.g. 10"
-                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-sm"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 mb-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Macros (per 100g or per serving)</h3>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -594,13 +673,33 @@ export default function MyFoods() {
               </div>
             </div>
           </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 mb-4">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Package Info</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Package Weight (g)</label>
+                <input
+                  type="number"
+                  value={formData.packageWeight || ''}
+                  onChange={(e) => setFormData({ ...formData, packageWeight: Number(e.target.value) || 0 })}
+                  placeholder="e.g. 500"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Items in Package</label>
+                <input
+                  type="number"
+                  value={formData.packageCount || ''}
+                  onChange={(e) => setFormData({ ...formData, packageCount: Number(e.target.value) || 0 })}
+                  placeholder="e.g. 10"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-sm"
+                />
+              </div>
+            </div>
+          </div>
             
-          <button
-            onClick={handleSave}
-            className="w-full py-3 bg-primary-500 text-white font-semibold rounded-xl hover:bg-primary-600 transition-colors"
-          >
-            {editingFood ? 'Save Changes' : 'Add to My Foods'}
-          </button>
         </div>
       </div>
     );

@@ -31,6 +31,17 @@ export default function Trips() {
     setLoading(false);
   };
 
+  const resetFormState = () => {
+    setShowForm(false);
+    setEditingTripId(null);
+    setDistance('');
+    setHours('');
+    setMinutes('');
+    setAvgSpeed('');
+    setAvgHeartRate('');
+    setDescription('');
+  };
+
   const weekStats = useMemo(() => {
     const today = new Date();
     const dayOfWeek = (today.getDay() + 6) % 7; // Monday = 0
@@ -56,8 +67,7 @@ export default function Trips() {
 
   const currentWeekNumber = getIsoWeekNumber(new Date());
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveTrip = async () => {
     if (!userId || !distance || (!hours && !minutes)) return;
 
     const duration = (parseInt(hours) || 0) * 60 + (parseInt(minutes) || 0);
@@ -78,15 +88,48 @@ export default function Trips() {
     }
 
     await loadTrips();
-    setShowForm(false);
-    setEditingTripId(null);
-    setDistance('');
-    setHours('');
-    setMinutes('');
-    setAvgSpeed('');
-    setAvgHeartRate('');
-    setDescription('');
+    resetFormState();
   };
+
+  useEffect(() => {
+    if (!showForm) return;
+
+    window.dispatchEvent(
+      new CustomEvent('macrometric:header-context', {
+        detail: {
+          showBack: true,
+          buttons: [
+            { id: 'cancel-trip', label: 'Cancel', tone: 'danger' },
+            { id: 'save-trip', label: 'Save', tone: 'primary' },
+          ],
+        },
+      })
+    );
+
+    const handleHeaderBack = () => {
+      resetFormState();
+    };
+
+    const handleHeaderAction = async (event: Event) => {
+      const actionId = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (actionId === 'cancel-trip') {
+        resetFormState();
+        return;
+      }
+      if (actionId === 'save-trip') {
+        await handleSaveTrip();
+      }
+    };
+
+    window.addEventListener('macrometric:header-back', handleHeaderBack);
+    window.addEventListener('macrometric:header-action', handleHeaderAction as EventListener);
+
+    return () => {
+      window.removeEventListener('macrometric:header-back', handleHeaderBack);
+      window.removeEventListener('macrometric:header-action', handleHeaderAction as EventListener);
+      window.dispatchEvent(new CustomEvent('macrometric:header-context', { detail: null }));
+    };
+  }, [showForm, editingTripId, distance, hours, minutes, avgSpeed, avgHeartRate, description, userId]);
 
   const handleEdit = (trip: Trip) => {
     setEditingTripId(trip.id);
@@ -145,27 +188,25 @@ export default function Trips() {
           </div>
           <button
             onClick={() => {
-              const next = !showForm;
-              setShowForm(next);
-              if (!next) {
-                setEditingTripId(null);
-                setDistance('');
-                setHours('');
-                setMinutes('');
-                setAvgSpeed('');
-                setAvgHeartRate('');
-                setDescription('');
-              }
+              if (showForm) return;
+              setShowForm(true);
             }}
+            disabled={showForm}
             className="px-4 py-2 bg-green-500 text-white font-semibold rounded-xl hover:bg-green-600 transition-colors"
           >
-            {showForm ? 'Cancel' : '+ Log Ride'}
+            + Log Ride
           </button>
         </div>
       </div>
 
       {showForm && (
-        <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-4">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSaveTrip();
+          }}
+          className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-4"
+        >
           <h3 className="font-semibold text-gray-800 dark:text-gray-100">{editingTripId ? 'Edit Ride' : 'Log New Ride'}</h3>
           
           <div className="grid grid-cols-2 gap-4">
@@ -240,12 +281,6 @@ export default function Trips() {
             </div>
           </div>
 
-          <button
-            type="submit"
-            className="w-full py-3 bg-green-500 text-white font-semibold rounded-xl hover:bg-green-600 transition-colors"
-          >
-            {editingTripId ? 'Save Changes' : 'Save Ride'}
-          </button>
         </form>
       )}
 

@@ -78,6 +78,41 @@ export default function FoodLog() {
     localStorage.setItem(LABEL_DRAFTS_KEY, JSON.stringify(labelDrafts));
   }, [labelDrafts]);
 
+  useEffect(() => {
+    if (!showManualAdd) return;
+
+    const actionLabel = editingFood ? 'Save' : 'Add';
+    window.dispatchEvent(
+      new CustomEvent('macrometric:header-context', {
+        detail: {
+          showBack: true,
+          buttons: [{ id: 'save-manual-food', label: actionLabel, tone: 'primary' }],
+        },
+      })
+    );
+
+    const handleHeaderBack = () => {
+      setShowManualAdd(false);
+      setEditingFood(null);
+    };
+
+    const handleHeaderAction = async (event: Event) => {
+      const actionId = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (actionId === 'save-manual-food') {
+        await handleSaveManualFood();
+      }
+    };
+
+    window.addEventListener('macrometric:header-back', handleHeaderBack);
+    window.addEventListener('macrometric:header-action', handleHeaderAction as EventListener);
+
+    return () => {
+      window.removeEventListener('macrometric:header-back', handleHeaderBack);
+      window.removeEventListener('macrometric:header-action', handleHeaderAction as EventListener);
+      window.dispatchEvent(new CustomEvent('macrometric:header-context', { detail: null }));
+    };
+  }, [showManualAdd, editingFood, manualMode, manualFood, userId]);
+
   const search = async () => {
     if (!userId) return;
     setLoading(true);
@@ -493,13 +528,6 @@ export default function FoodLog() {
   if (showManualAdd) {
     return (
       <div className="space-y-4">
-        <button
-          onClick={() => { setShowManualAdd(false); setEditingFood(null); }}
-          className="text-primary-600 dark:text-blue-400 font-medium flex items-center gap-1"
-        >
-          Back
-        </button>
-        
         <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl shadow-sm p-5 border border-blue-100 dark:border-blue-800">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
@@ -675,12 +703,6 @@ export default function FoodLog() {
             </div>
           </div>
             
-          <button
-            onClick={handleSaveManualFood}
-            className="w-full py-3 bg-green-500 text-white font-semibold rounded-xl hover:bg-green-600 transition-colors"
-          >
-            {editingFood ? 'Update Food' : manualMode === 'logOnly' ? 'Add to Log' : 'Save to My Foods & Add to Log'}
-          </button>
         </div>
       </div>
     );

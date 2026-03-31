@@ -1,5 +1,4 @@
 import { useState, useEffect, ReactNode, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getGoals, updateGoals, getRaceGoal, saveRaceGoal, getDaysUntilRace, changePassword, getStepGoal, saveStepGoal as saveStepGoalApi, exportUserData, importUserData, getEventGoals, saveEventGoalItem, deleteEventGoalItem, setPrimaryEventGoal, EventGoalItem, getReleaseNotes, addReleaseNote as addReleaseNoteApi, getFeatureRequests, saveFeatureRequest as saveFeatureRequestApi, deleteFeatureRequest as deleteFeatureRequestApi, ReleaseNoteItem, FeatureRequestItem } from '../lib/api';
@@ -7,7 +6,7 @@ import { formatDateDDMMYYYY } from '../lib/date';
 import MaterialIcon from '../components/MaterialIcon';
 
 const getVersionString = () => {
-  return '1.1.0';
+  return '1.2.1';
 };
 
 const normalizeToIsoDate = (value?: string | null): string => {
@@ -73,7 +72,6 @@ function CollapsibleSection({ title, icon, defaultExpanded = false, gradient = f
 }
 
 export default function Settings() {
-  const navigate = useNavigate();
   const { userId, email } = useAuth();
   const { theme, setTheme } = useTheme();
   const [calories, setCalories] = useState(1500);
@@ -103,6 +101,8 @@ export default function Settings() {
   const [goalFormTargetWeight, setGoalFormTargetWeight] = useState(80);
   const [goalFormWeeklyTarget, setGoalFormWeeklyTarget] = useState(0.5);
   const [goalSaved, setGoalSaved] = useState(false);
+  const [eventGoalError, setEventGoalError] = useState('');
+  const [eventGoalBusy, setEventGoalBusy] = useState(false);
   const [stepGoal, setStepGoal] = useState(10000);
 
   const [showPasswordForm, setShowPasswordForm] = useState(false);
@@ -152,9 +152,9 @@ export default function Settings() {
     setReleaseNotes(notes);
   };
 
-  const loadData = async () => {
+  const loadData = async (showSpinner = true) => {
     if (!userId) return;
-    setLoading(true);
+    if (showSpinner) setLoading(true);
     
     const [stored, raceGoalData, stepGoalData, eventGoalsData, releaseNotesData, featureRequestsData] = await Promise.all([
       getGoals(userId),
@@ -196,7 +196,21 @@ export default function Settings() {
     setShowGoalForm(false);
     setDaysUntilRace(await getDaysUntilRace(userId));
     setStepGoal(stepGoalData);
-    setLoading(false);
+    if (showSpinner) setLoading(false);
+  };
+
+  const refreshEventGoalData = async () => {
+    if (!userId) return;
+    const [raceGoalData, eventGoalsData, days] = await Promise.all([
+      getRaceGoal(userId),
+      getEventGoals(userId),
+      getDaysUntilRace(userId),
+    ]);
+    setRaceDate(normalizeToDisplayDate(raceGoalData.raceDate));
+    setRaceTargetWeight(raceGoalData.targetWeight);
+    setRaceWeeklyTarget(raceGoalData.weeklyTarget);
+    setEventGoals(eventGoalsData);
+    setDaysUntilRace(days);
   };
 
   useEffect(() => {
@@ -226,6 +240,7 @@ export default function Settings() {
   };
 
   const handleSetEditingGoal = (goal: EventGoalItem) => {
+    setEventGoalError('');
     setEditingGoalId(goal.id);
     setGoalFormName(goal.eventName || '');
     setGoalFormDate(normalizeToDisplayDate(goal.raceDate));
@@ -235,6 +250,7 @@ export default function Settings() {
   };
 
   const handleNewGoal = () => {
+    setEventGoalError('');
     setShowGoalForm((prev) => {
       const next = !prev;
       if (next) {
@@ -253,31 +269,55 @@ export default function Settings() {
   const handleSaveGoalFromForm = async () => {
     if (!userId) return;
     if (!goalFormName.trim()) return;
+    setEventGoalError('');
+    setEventGoalBusy(true);
     const safeRaceDate = normalizeToIsoDate(goalFormDate);
-    await saveEventGoalItem(userId, {
-      id: editingGoalId || undefined,
-      eventName: goalFormName.trim(),
-      raceDate: safeRaceDate,
-      targetWeight: goalFormTargetWeight,
-      weeklyTarget: goalFormWeeklyTarget,
-    });
-    await loadData();
-    setGoalSaved(true);
-    setTimeout(() => setGoalSaved(false), 2000);
-    setShowGoalForm(false);
+    try {
+      await saveEventGoalItem(userId, {
+        id: editingGoalId || undefined,
+        eventName: goalFormName.trim(),
+        raceDate: safeRaceDate,
+        targetWeight: goalFormTargetWeight,
+        weeklyTarget: goalFormWeeklyTarget,
+      });
+      await refreshEventGoalData();
+      setGoalSaved(true);
+      setShowGoalForm(false);
+      setEditingGoalId(null);
+      setTimeout(() => setGoalSaved(false), 2000);
+    } catch (error) {
+      setEventGoalError(error instanceof Error ? error.message : 'Failed to save event goal');
+    } finally {
+      setEventGoalBusy(false);
+    }
   };
 
   const handleSetActiveEventGoal = async (id: string) => {
     if (!userId) return;
-    await setPrimaryEventGoal(userId, id);
-    await loadData();
+    setEventGoalError('');
+    setEventGoalBusy(true);
+    try {
+      await setPrimaryEventGoal(userId, id);
+      await refreshEventGoalData();
+    } catch (error) {
+      setEventGoalError(error instanceof Error ? error.message : 'Failed to set active event goal');
+    } finally {
+      setEventGoalBusy(false);
+    }
   };
 
   const handleDeleteEventGoal = async (id: string) => {
     if (!userId) return;
-    await deleteEventGoalItem(userId, id);
-    const updatedGoals = await getEventGoals(userId);
-    setEventGoals(updatedGoals);
+    setEventGoalError('');
+    setEventGoalBusy(true);
+    try {
+      await deleteEventGoalItem(userId, id);
+      await refreshEventGoalData();
+    } catch (error) {
+      setEventGoalError(error instanceof Error ? error.message : 'Failed to delete event goal');
+    } finally {
+      setEventGoalBusy(false);
+    }
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -588,6 +628,7 @@ export default function Settings() {
         )}
         
         <button
+          type="button"
           onClick={handleSave}
           className={`w-full mt-6 py-3 font-semibold rounded-xl transition-colors ${
             saved
@@ -606,6 +647,11 @@ export default function Settings() {
       <CollapsibleSection title="Event Goals" icon="target" gradient>
         <div className="bg-white/10 rounded-xl p-4 space-y-4">
           <div className="text-xs uppercase tracking-wide opacity-70">Event Goals List</div>
+          {eventGoalError && (
+            <div className="rounded-lg border border-red-300/70 bg-red-500/20 px-3 py-2 text-sm text-red-100">
+              Save failed: {eventGoalError}
+            </div>
+          )}
           <div className="space-y-2">
             {eventGoals.map((goal) => (
               <div key={goal.id} className="rounded-lg bg-white/20 p-3">
@@ -622,6 +668,7 @@ export default function Settings() {
                   <div className="flex gap-2">
                     {goal.id !== 'primary' && !goal.isPrimary && (
                       <button
+                        type="button"
                         onClick={() => handleSetActiveEventGoal(goal.id)}
                         className="px-3 py-1.5 rounded-md bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700"
                       >
@@ -629,6 +676,7 @@ export default function Settings() {
                       </button>
                     )}
                     <button
+                      type="button"
                       onClick={() => handleSetEditingGoal(goal)}
                       className="px-3 py-1.5 rounded-md bg-slate-900/90 text-white border border-white/30 text-xs font-semibold hover:bg-slate-900"
                     >
@@ -636,6 +684,7 @@ export default function Settings() {
                     </button>
                     {goal.id !== 'primary' && !goal.isPrimary && (
                       <button
+                        type="button"
                         onClick={() => handleDeleteEventGoal(goal.id)}
                         className="px-3 py-1.5 rounded-md bg-red-600 text-white text-xs font-semibold hover:bg-red-700"
                       >
@@ -654,6 +703,7 @@ export default function Settings() {
                 {showGoalForm ? (editingGoalId ? 'Edit Goal' : 'Add Goal') : 'Form Collapsed'}
               </div>
               <button
+                type="button"
                 onClick={handleNewGoal}
                 className="px-2 py-1 rounded-md bg-white/20 text-white text-xs font-medium hover:bg-white/30"
               >
@@ -716,17 +766,18 @@ export default function Settings() {
                   <p className="text-xs opacity-70 mt-1">{daysUntilRace} days until active event</p>
                 </div>
                 <button
+                  type="button"
                   onClick={handleSaveGoalFromForm}
-                  disabled={!goalFormName.trim()}
+                  disabled={!goalFormName.trim() || eventGoalBusy}
                   className={`w-full py-2 rounded-lg font-semibold transition-colors ${
-                    !goalFormName.trim()
+                    !goalFormName.trim() || eventGoalBusy
                       ? 'bg-white/30 text-white/60 cursor-not-allowed'
                       : 'bg-white text-blue-600 hover:bg-white/90'
                   }`}
                 >
                   <span className="inline-flex items-center justify-center gap-1">
                     {goalSaved && <MaterialIcon name="check_circle" className="text-[18px]" />}
-                    {goalSaved ? 'Saved!' : editingGoalId ? 'Save Changes' : 'Add Goal'}
+                    {eventGoalBusy ? 'Saving...' : goalSaved ? 'Saved!' : editingGoalId ? 'Save Changes' : 'Add Goal'}
                   </span>
                 </button>
               </>
@@ -909,27 +960,6 @@ export default function Settings() {
               {backupStatus}
             </div>
           )}
-        </div>
-      </CollapsibleSection>
-
-      {/* Maintenance */}
-      <CollapsibleSection title="Maintenance" icon="build">
-        <div className="space-y-3">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Open the maintenance view for bulk search/review/edit/delete on your foods.
-          </p>
-          <button
-            onClick={() => navigate('/my-foods')}
-            className="w-full py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors"
-          >
-            Open Food Manager
-          </button>
-          <button
-            onClick={() => navigate('/food-entries')}
-            className="w-full py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
-          >
-            Open Food Entries Manager
-          </button>
         </div>
       </CollapsibleSection>
 

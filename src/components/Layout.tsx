@@ -9,12 +9,25 @@ const navItems = [
   { to: '/history', label: 'History', icon: 'history' },
 ];
 
+type HeaderActionButton = {
+  id: string;
+  label: string;
+  tone?: 'danger' | 'primary';
+};
+
+type HeaderContextState = {
+  showBack?: boolean;
+  buttons?: HeaderActionButton[];
+} | null;
+
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
+  const isTodayPage = location.pathname === '/';
   const isMaintenancePage = location.pathname === '/my-foods' || location.pathname === '/food-entries';
   const mainRef = useRef<HTMLElement | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [headerContext, setHeaderContext] = useState<HeaderContextState>(null);
 
   const focusFirstInput = () => {
     if (!mainRef.current) return;
@@ -36,6 +49,10 @@ export default function Layout() {
   }, [location.pathname]);
 
   useEffect(() => {
+    setHeaderContext(null);
+  }, [location.pathname]);
+
+  useEffect(() => {
     const handleFocusRequest = () => {
       window.setTimeout(focusFirstInput, 0);
     };
@@ -45,12 +62,40 @@ export default function Layout() {
     };
   }, []);
 
+  useEffect(() => {
+    const handleHeaderContext = (event: Event) => {
+      const customEvent = event as CustomEvent<HeaderContextState>;
+      setHeaderContext(customEvent.detail || null);
+    };
+
+    window.addEventListener('macrometric:header-context', handleHeaderContext as EventListener);
+    return () => {
+      window.removeEventListener('macrometric:header-context', handleHeaderContext as EventListener);
+    };
+  }, []);
+
   const goHome = () => {
     if (location.pathname === '/') {
       window.dispatchEvent(new Event('macrometric:today-nav'));
       return;
     }
     navigate('/');
+  };
+
+  const triggerHeaderBack = () => {
+    window.dispatchEvent(new Event('macrometric:header-back'));
+  };
+
+  const triggerHeaderAction = (id: string) => {
+    window.dispatchEvent(new CustomEvent('macrometric:header-action', { detail: { id } }));
+  };
+
+  const onBrandClick = () => {
+    if (headerContext?.showBack) {
+      triggerHeaderBack();
+      return;
+    }
+    goHome();
   };
 
   const handleLogout = async () => {
@@ -66,31 +111,50 @@ export default function Layout() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={goHome}
+              onClick={onBrandClick}
               className="rounded-full p-0.5 hover:bg-gray-100 transition-colors"
-              title="Go to homepage"
-              aria-label="Go to homepage"
+              title={headerContext?.showBack ? 'Back' : 'Go to homepage'}
+              aria-label={headerContext?.showBack ? 'Back' : 'Go to homepage'}
             >
               <div className="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center">
                 <span className="text-white font-bold text-sm">M</span>
               </div>
             </button>
-            {navItems.map(({ to, label, icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                title={label}
-                className={({ isActive }) =>
-                  `flex items-center justify-center p-2 rounded-lg transition-colors ${
-                    isActive
-                      ? 'text-primary-600 bg-primary-50'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`
-                }
-              >
-                <MaterialIcon name={icon} className="text-[28px]" />
-              </NavLink>
-            ))}
+            {headerContext?.buttons?.length ? (
+              <div className="flex items-center gap-2 ml-1">
+                {headerContext.buttons.map((button) => (
+                  <button
+                    key={button.id}
+                    type="button"
+                    onClick={() => triggerHeaderAction(button.id)}
+                    className={`min-w-[88px] px-4 py-2 rounded-xl text-sm font-semibold text-white transition-colors ${
+                      button.tone === 'danger'
+                        ? 'bg-red-500 hover:bg-red-600'
+                        : 'bg-primary-500 hover:bg-primary-600'
+                    }`}
+                  >
+                    {button.label}
+                  </button>
+                ))}
+              </div>
+            ) : isTodayPage ? (
+              navItems.map(({ to, label, icon }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  title={label}
+                  className={({ isActive }) =>
+                    `flex items-center justify-center p-2 rounded-lg transition-colors ${
+                      isActive
+                        ? 'text-primary-600 bg-primary-50'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`
+                  }
+                >
+                  <MaterialIcon name={icon} className="text-[28px]" />
+                </NavLink>
+              ))
+            ) : null}
           </div>
           <div
             className="relative"
@@ -111,6 +175,34 @@ export default function Layout() {
                 moreOpen ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-2 pointer-events-none'
               }`}
             >
+              <NavLink
+                to="/food-entries"
+                onClick={() => setMoreOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                    isActive
+                      ? 'text-primary-900 bg-primary-200 font-medium dark:text-blue-100 dark:bg-blue-900/70'
+                      : 'text-gray-800 hover:bg-gray-200 dark:text-gray-100 dark:hover:bg-gray-700'
+                  }`
+                }
+              >
+                <MaterialIcon name="edit_note" className="text-[18px]" />
+                <span>Entry Manager</span>
+              </NavLink>
+              <NavLink
+                to="/my-foods"
+                onClick={() => setMoreOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                    isActive
+                      ? 'text-primary-900 bg-primary-200 font-medium dark:text-blue-100 dark:bg-blue-900/70'
+                      : 'text-gray-800 hover:bg-gray-200 dark:text-gray-100 dark:hover:bg-gray-700'
+                  }`
+                }
+              >
+                <MaterialIcon name="restaurant_menu" className="text-[18px]" />
+                <span>Food Manager</span>
+              </NavLink>
               <NavLink
                 to="/settings"
                 onClick={() => setMoreOpen(false)}
