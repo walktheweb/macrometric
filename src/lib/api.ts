@@ -940,6 +940,8 @@ export async function saveCheckin(userId: string, data: {
   
   if (error) {
     console.error('Error saving checkin:', error);
+  } else {
+    await syncAutoWeightMilestones(userId);
   }
   
   return {
@@ -970,6 +972,8 @@ export async function deleteCheckin(userId: string, checkinId: string): Promise<
   
   if (error) {
     console.error('Error deleting checkin:', error);
+  } else {
+    await syncAutoWeightMilestones(userId);
   }
 }
 
@@ -1339,6 +1343,108 @@ export async function setPrimaryEventGoal(userId: string, id: string): Promise<v
 }
 
 // Milestones
+export async function syncAutoWeightMilestones(userId: string): Promise<number> {
+  const [checkins, raceGoal, existingMilestones] = await Promise.all([
+    getCheckins(userId),
+    getRaceGoal(userId),
+    getMilestones(userId),
+  ]);
+
+  const weightedAsc = checkins
+    .filter((item) => typeof item.weight === 'number' && Number.isFinite(item.weight))
+    .slice()
+    .sort((a, b) => {
+      const byDate = a.date.localeCompare(b.date);
+      if (byDate !== 0) return byDate;
+      return (a.createdAt || 0) - (b.createdAt || 0);
+    });
+
+  if (weightedAsc.length === 0) {
+    return 0;
+  }
+
+  const firstWeight = weightedAsc[0]?.weight ?? null;
+  const maxWeight = weightedAsc.reduce((max, item) => {
+    const value = item.weight as number;
+    return value > max ? value : max;
+  }, Number.NEGATIVE_INFINITY);
+  const minWeight = weightedAsc.reduce((min, item) => {
+    const value = item.weight as number;
+    return value < min ? value : min;
+  }, Number.POSITIVE_INFINITY);
+
+  if (firstWeight === null || !Number.isFinite(minWeight) || !Number.isFinite(maxWeight)) {
+    return 0;
+  }
+
+  const raceThreshold = raceGoal?.targetWeight ? Math.floor(raceGoal.targetWeight) : null;
+  const fromThreshold = Math.max(
+    Math.floor(firstWeight),
+    Math.ceil(maxWeight),
+    raceThreshold ?? Number.NEGATIVE_INFINITY
+  );
+  const lowerBound = raceGoal?.targetWeight
+    ? Math.min(Math.floor(raceGoal.targetWeight), Math.floor(minWeight))
+    : Math.floor(minWeight);
+
+  if (fromThreshold < lowerBound) {
+    return 0;
+  }
+
+  const existingAutoByTitle = new Map(
+    existingMilestones
+      .filter((m) => (m.notes || '').startsWith('auto:weight'))
+      .map((m) => [m.title, m])
+  );
+
+  const now = Date.now();
+  const recordsToUpsert: any[] = [];
+
+  for (let threshold = fromThreshold; threshold >= lowerBound; threshold -= 1) {
+    const firstHit = weightedAsc.find((entry) => (entry.weight || Number.POSITIVE_INFINITY) < threshold);
+    if (!firstHit) continue;
+
+    const title = `Under ${threshold} kg`;
+    const existing = existingAutoByTitle.get(title);
+
+    const nextRecord = {
+      id: existing?.id || generateId(),
+      user_id: userId,
+      title,
+      date: firstHit.date,
+      notes: 'auto:weight',
+      done: true,
+      created_at: existing?.createdAt || now,
+      updated_at: now,
+    };
+
+    const hasChanges =
+      !existing ||
+      existing.date !== nextRecord.date ||
+      existing.done !== true ||
+      (existing.notes || '') !== 'auto:weight';
+
+    if (hasChanges) {
+      recordsToUpsert.push(nextRecord);
+    }
+  }
+
+  if (recordsToUpsert.length === 0) {
+    return 0;
+  }
+
+  const { error } = await supabase
+    .from('milestones')
+    .upsert(recordsToUpsert, { onConflict: 'id' });
+
+  if (error) {
+    console.error('Error syncing auto weight milestones:', error);
+    return 0;
+  }
+
+  return recordsToUpsert.length;
+}
+
 export async function getMilestones(userId: string): Promise<Milestone[]> {
   const { data, error } = await supabase
     .from('milestones')

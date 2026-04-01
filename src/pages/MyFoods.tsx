@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { getMyFoods, addMyFood, deleteMyFood, addLog, updateMyFoodAndLogs, Food, getToday } from '../lib/api';
+import { getMyFoods, addMyFood, deleteMyFood, addLog, updateMyFoodAndLogs, updateLog, Food, getToday } from '../lib/api';
 import MaterialIcon from '../components/MaterialIcon';
 
 type EditableField =
@@ -69,6 +69,11 @@ export default function MyFoods() {
   const newNetCarbsParam = searchParams.get('newNetCarbs');
   const newPackageWeightParam = searchParams.get('newPackageWeight');
   const newPackageCountParam = searchParams.get('newPackageCount');
+  const logWeightParam = searchParams.get('logWeight');
+  const logIdParam = searchParams.get('logId');
+  const [logWeightInput, setLogWeightInput] = useState('');
+  const [targetLogId, setTargetLogId] = useState('');
+  const showTodayLogWeightField = !!targetLogId;
   const [formData, setFormData] = useState<Food>({
     id: '',
     name: '',
@@ -135,10 +140,13 @@ export default function MyFoods() {
     if (editFoodIdParam && allFoods.length > 0) {
       const targetFood = allFoods.find((food) => food.id === editFoodIdParam);
       if (targetFood) {
-        openEditForm(targetFood);
+        openEditForm(targetFood, logWeightParam || '', logIdParam || '');
       }
+      setTargetLogId(logIdParam || '');
       const next = new URLSearchParams(searchParams);
       next.delete('editFoodId');
+      next.delete('logWeight');
+      next.delete('logId');
       setSearchParams(next, { replace: true });
       deepLinkHandledRef.current = deepLinkKey;
       return;
@@ -160,6 +168,8 @@ export default function MyFoods() {
         packageWeight: Number(newPackageWeightParam) || 0,
         packageCount: Number(newPackageCountParam) || 0,
       });
+      setLogWeightInput(logWeightParam || '');
+      setTargetLogId(logIdParam || '');
       setShowForm(true);
       const next = new URLSearchParams(searchParams);
       next.delete('newFoodName');
@@ -173,6 +183,8 @@ export default function MyFoods() {
       next.delete('newNetCarbs');
       next.delete('newPackageWeight');
       next.delete('newPackageCount');
+      next.delete('logWeight');
+      next.delete('logId');
       setSearchParams(next, { replace: true });
       deepLinkHandledRef.current = deepLinkKey;
     }
@@ -192,6 +204,8 @@ export default function MyFoods() {
     newNetCarbsParam,
     newPackageWeightParam,
     newPackageCountParam,
+    logWeightParam,
+    logIdParam,
   ]);
 
   const loadFoods = async () => {
@@ -260,6 +274,8 @@ export default function MyFoods() {
 
   const openAddForm = () => {
     setEditingFood(null);
+    setLogWeightInput('');
+    setTargetLogId('');
     setFormData({
       id: '',
       name: '',
@@ -276,8 +292,10 @@ export default function MyFoods() {
     setShowForm(true);
   };
 
-  const openEditForm = (food: Food) => {
+  const openEditForm = (food: Food, presetLogWeight = '', presetLogId = '') => {
     setEditingFood(food);
+    setLogWeightInput(presetLogWeight);
+    setTargetLogId(presetLogId);
     setFormData({ ...food });
     setShowForm(true);
   };
@@ -289,13 +307,40 @@ export default function MyFoods() {
       return;
     }
 
+    let foodForLog: Food;
     if (editingFood) {
       const result = await updateMyFoodAndLogs(userId, formData);
+      foodForLog = { ...formData, id: editingFood.id };
       if (result.updatedLogs > 0) {
         alert(`Saved! Updated ${result.updatedLogs} past entry(s).`);
       }
     } else {
-      await addMyFood(userId, formData);
+      const savedFood = await addMyFood(userId, formData);
+      foodForLog = { ...formData, id: savedFood.id };
+    }
+
+    const parsedLogWeight = Number(logWeightInput.replace(',', '.'));
+    if (Number.isFinite(parsedLogWeight) && parsedLogWeight > 0) {
+      const servingSize = Number(foodForLog.servingSize) || 100;
+      const quantity = parsedLogWeight / servingSize;
+      const multiplier = quantity;
+      const netCarbsPerUnit = (foodForLog.netCarbs && foodForLog.netCarbs > 0) ? foodForLog.netCarbs : foodForLog.carbs;
+      const logPayload = {
+        ...foodForLog,
+        calories: Math.round((foodForLog.calories || 0) * multiplier * 10) / 10,
+        protein: Math.round((foodForLog.protein || 0) * multiplier * 10) / 10,
+        carbs: Math.round((foodForLog.carbs || 0) * multiplier * 10) / 10,
+        fat: Math.round((foodForLog.fat || 0) * multiplier * 10) / 10,
+        netCarbs: Math.round((netCarbsPerUnit || 0) * multiplier * 10) / 10,
+        serving: `${Math.round(parsedLogWeight * 10) / 10}g`,
+        quantity,
+        date: logDate,
+      };
+      if (targetLogId) {
+        await updateLog(userId, targetLogId, logPayload);
+      } else {
+        await addLog(userId, logPayload);
+      }
     }
     
     await loadFoods();
@@ -699,6 +744,29 @@ export default function MyFoods() {
               </div>
             </div>
           </div>
+
+          {showTodayLogWeightField && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-4 mb-4">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Log to Date (Optional)</h3>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">
+                  Amount Weight for {logDate} (g)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={logWeightInput}
+                  onChange={(e) => setLogWeightInput(e.target.value)}
+                  placeholder="e.g. 150"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-sm"
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  This value is only used for the daily log entry and is not stored in the My Foods database.
+                </p>
+              </div>
+            </div>
+          )}
             
         </div>
       </div>

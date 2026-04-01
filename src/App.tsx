@@ -11,6 +11,7 @@ import Settings from './pages/Settings';
 import MyFoods from './pages/MyFoods';
 import FoodEntries from './pages/FoodEntries';
 import Trips from './pages/Trips';
+import Help from './pages/Help';
 import Layout from './components/Layout';
 import LoginScreen from './pages/LoginScreen';
 
@@ -70,6 +71,7 @@ export default function App() {
               <Route path="trips" element={<Trips />} />
               <Route path="history" element={<History />} />
               <Route path="settings" element={<Settings />} />
+              <Route path="help" element={<Help />} />
             </Route>
           </Routes>
         </BrowserRouter>

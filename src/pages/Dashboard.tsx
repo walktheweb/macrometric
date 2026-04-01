@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getLogs, getGoals, deleteLog, updateLog, DayLog, Goal, FoodLog, getTodayCheckin, saveCheckin, getCheckins, getTrips, getRaceGoal, getDaysUntilRace, RaceGoal, getStepGoal, Checkin, getToday, deleteCheckin } from '../lib/api';
@@ -58,6 +58,75 @@ function getBmiPosition(bmi: number) {
 
 function getStepsPosition(steps: number, goal: number) {
   return Math.min(100, (steps / goal) * 100);
+}
+
+function getToneClass(tone: 'green' | 'amber' | 'orange' | 'red' | 'critical') {
+  if (tone === 'green') return 'text-green-600 dark:text-green-400';
+  if (tone === 'amber') return 'text-amber-600 dark:text-amber-400';
+  if (tone === 'orange') return 'text-orange-600 dark:text-orange-400';
+  if (tone === 'critical') return 'text-red-700 dark:text-red-300';
+  return 'text-red-600 dark:text-red-400';
+}
+
+function getWeightTone(weight: number) {
+  if (weight <= 78) return getToneClass('green');
+  if (weight <= 81) return getToneClass('amber');
+  return getToneClass('red');
+}
+
+function getBpTone(sys: number, dia: number) {
+  if (sys > 180 || dia > 120) return getToneClass('critical');
+  if (sys >= 140 || dia >= 90) return getToneClass('red');
+  if ((sys >= 130 && sys <= 139) || (dia >= 80 && dia <= 89)) return getToneClass('orange');
+  if (sys >= 120 && sys <= 129 && dia < 80) return getToneClass('amber');
+  if (sys < 120 && dia < 80) return getToneClass('green');
+  return getToneClass('amber');
+}
+
+function getGlucoseMmolTone(glucose: number) {
+  // mmol/L thresholds converted from 70, 80, 130, 180, 250 mg/dL.
+  if (glucose < 3.9) return getToneClass('red');
+  if (glucose < 4.4) return getToneClass('amber');
+  if (glucose <= 7.2) return getToneClass('green');
+  if (glucose <= 10) return getToneClass('amber');
+  if (glucose <= 13.9) return getToneClass('red');
+  return getToneClass('critical');
+}
+
+function getKetonesTone(ketones: number) {
+  if (ketones < 0.5) return getToneClass('red');
+  if (ketones < 1) return getToneClass('amber');
+  if (ketones <= 5) return getToneClass('green');
+  return getToneClass('critical');
+}
+
+function getHeartRateTone(heartRate: number) {
+  if (heartRate < 40) return getToneClass('red');
+  if (heartRate <= 59) return getToneClass('amber');
+  if (heartRate <= 100) return getToneClass('green');
+  if (heartRate <= 120) return getToneClass('amber');
+  return getToneClass('red');
+}
+
+function getElapsedFromDate(date: string) {
+  const then = new Date(`${date}T00:00:00`);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diffMs = today.getTime() - then.getTime();
+  const daysAgo = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+  const weeksAgo = Math.floor(daysAgo / 7);
+  const monthsAgo = Math.floor(daysAgo / 30);
+  return { daysAgo, weeksAgo, monthsAgo };
+}
+
+function splitServingDisplay(serving?: string | null) {
+  const raw = (serving || '').trim();
+  if (!raw) return { value: '-', unit: '' };
+  const match = raw.match(/^([0-9]+(?:[.,][0-9]+)?)(.*)$/);
+  if (!match) return { value: raw, unit: '' };
+  const value = match[1];
+  const unit = (match[2] || '').trim() || 'x';
+  return { value, unit };
 }
 
 function ExplodedPieIcon() {
@@ -136,6 +205,7 @@ export default function Dashboard() {
     notes: '',
   });
   const editCheckinId = searchParams.get('editCheckin');
+  const openCheckinParam = searchParams.get('openCheckin');
   const fromHistory = searchParams.get('from') === 'history';
 
   const toCheckinFormData = (item: Checkin) => ({
@@ -159,6 +229,13 @@ export default function Dashboard() {
     if (!searchParams.get('editCheckin')) return;
     const next = new URLSearchParams(searchParams);
     next.delete('editCheckin');
+    setSearchParams(next, { replace: true });
+  };
+
+  const clearOpenCheckinParam = () => {
+    if (!searchParams.get('openCheckin')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('openCheckin');
     setSearchParams(next, { replace: true });
   };
 
@@ -206,6 +283,19 @@ export default function Dashboard() {
       window.removeEventListener('macrometric:today-nav', handleTodayNav);
     };
   }, []);
+
+  useEffect(() => {
+    const handleOpenCheckin = () => {
+      setEditingLog(null);
+      setEditingCheckin(null);
+      setShowCheckin(true);
+      clearEditCheckinParam();
+    };
+    window.addEventListener('macrometric:open-checkin', handleOpenCheckin);
+    return () => {
+      window.removeEventListener('macrometric:open-checkin', handleOpenCheckin);
+    };
+  }, [searchParams]);
 
   useEffect(() => {
     if (editingLog || showCheckin) {
@@ -287,6 +377,14 @@ export default function Dashboard() {
     setShowCheckin(true);
   }, [editCheckinId, checkins]);
 
+  useEffect(() => {
+    if (openCheckinParam !== '1') return;
+    setEditingLog(null);
+    setEditingCheckin(null);
+    setShowCheckin(true);
+    clearOpenCheckinParam();
+  }, [openCheckinParam]);
+
   const loadData = async () => {
     if (!userId) return;
     
@@ -306,6 +404,7 @@ export default function Dashboard() {
     setCheckins(checkinsData);
     setTrips(tripsData);
     setTodayCheckins(todayData ? [todayData] : []);
+    window.dispatchEvent(new CustomEvent('macrometric:checkin-updated', { detail: { hasTodayCheckin: !!todayData } }));
     setRaceGoal(raceGoalData);
     setStepGoal(stepGoalData);
     setDaysUntil(await getDaysUntilRace(userId));
@@ -370,6 +469,9 @@ export default function Dashboard() {
   const openFoodEditorFromToday = (log: FoodLog) => {
     const params = new URLSearchParams();
     params.set('logDate', currentDay);
+    const currentLogGrams = Math.round(((Number(log.quantity) || 1) * (Number(log.servingSize) || 100)) * 10) / 10;
+    params.set('logWeight', String(currentLogGrams));
+    params.set('logId', log.id);
 
     if (log.foodId) {
       params.set('editFoodId', log.foodId);
@@ -460,6 +562,7 @@ export default function Dashboard() {
     setEditingCheckin(null);
     clearEditCheckinParam();
     loadData();
+    window.dispatchEvent(new CustomEvent('macrometric:checkin-updated', { detail: { hasTodayCheckin: true } }));
   };
 
   const handleDeleteCurrentCheckin = async () => {
@@ -472,6 +575,7 @@ export default function Dashboard() {
     setEditingCheckin(null);
     clearEditCheckinParam();
     loadData();
+    window.dispatchEvent(new CustomEvent('macrometric:checkin-updated', { detail: { hasTodayCheckin: false } }));
   };
 
   if (authLoading || loading) {
@@ -508,6 +612,45 @@ export default function Dashboard() {
   const weightDelta = latestWeight !== null ? Math.round((latestWeight - weightTarget) * 10) / 10 : null;
   const weightMilestoneReached = weightDelta !== null ? weightDelta <= 0 : false;
   const raceMilestoneReached = daysUntil <= 0;
+  const weightedAsc = checkins
+    .filter((item) => typeof item.weight === 'number' && Number.isFinite(item.weight))
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const firstWeight = weightedAsc[0]?.weight ?? null;
+  const weightAutoGoals: Array<{ threshold: number; done: boolean }> = [];
+  if (firstWeight !== null && latestWeight !== null) {
+    const maxWeight = weightedAsc.reduce((max, item) => {
+      const value = item.weight as number;
+      return value > max ? value : max;
+    }, Number.NEGATIVE_INFINITY);
+    const minWeight = weightedAsc.reduce((min, item) => {
+      const value = item.weight as number;
+      return value < min ? value : min;
+    }, Number.POSITIVE_INFINITY);
+    const fromThreshold = Math.max(Math.floor(firstWeight), Math.ceil(maxWeight), Math.floor(weightTarget));
+    const targetThreshold = Math.min(Math.floor(weightTarget), Math.floor(minWeight));
+    if (fromThreshold >= targetThreshold) {
+      for (let threshold = fromThreshold; threshold >= targetThreshold; threshold -= 1) {
+        const firstHit = weightedAsc.find((entry) => (entry.weight || Number.POSITIVE_INFINITY) < threshold);
+        weightAutoGoals.push({
+          threshold,
+          done: !!firstHit,
+        });
+      }
+    }
+  }
+  const achievedWeightMilestones = weightAutoGoals
+    .filter((goal) => goal.done)
+    .map((goal) => {
+      const firstHit = weightedAsc.find((entry) => (entry.weight || Number.POSITIVE_INFINITY) < goal.threshold);
+      return { threshold: goal.threshold, date: firstHit?.date || '' };
+    })
+    .filter((item) => !!item.date)
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const lastReachedWeightMilestone = achievedWeightMilestones[0] || null;
+  const lastReachedWeightMilestoneElapsed = lastReachedWeightMilestone
+    ? getElapsedFromDate(lastReachedWeightMilestone.date)
+    : null;
 
   const dateObj = new Date();
   const dateStr = `${String(dateObj.getDate()).padStart(2, '0')}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${dateObj.getFullYear()}`;
@@ -519,6 +662,27 @@ export default function Dashboard() {
 
   // Get today's steps (aggregate from all check-ins today)
   const todaySteps = todayCheckins.reduce((sum, c) => sum + (c.steps || 0), 0);
+  const todayCheckin = todayCheckins[0] || null;
+  const previousWeightCheckin = checkins.find((item) => item.id !== todayCheckin?.id && typeof item.weight === 'number' && Number.isFinite(item.weight));
+  const todayWeight = typeof todayCheckin?.weight === 'number' && Number.isFinite(todayCheckin.weight) ? todayCheckin.weight : null;
+  const previousWeight = previousWeightCheckin?.weight ?? null;
+  const weightChangeFromLastCheckin = todayWeight !== null && previousWeight !== null
+    ? Math.round((todayWeight - previousWeight) * 10) / 10
+    : null;
+  const weightTrendIcon = weightChangeFromLastCheckin === null
+    ? null
+    : weightChangeFromLastCheckin > 0
+      ? 'arrow_upward'
+      : weightChangeFromLastCheckin < 0
+        ? 'arrow_downward'
+        : 'drag_handle';
+  const weightTrendClass = weightChangeFromLastCheckin === null
+    ? ''
+    : weightChangeFromLastCheckin > 0
+      ? 'text-red-600 dark:text-red-400'
+      : weightChangeFromLastCheckin < 0
+        ? 'text-green-600 dark:text-green-400'
+        : 'text-gray-500 dark:text-gray-400';
 
   if (editingLog) {
     const servingSize = Number(editingLog.servingSize) || 100;
@@ -796,18 +960,16 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-4">
-      <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl shadow-sm p-4 border border-indigo-100 dark:border-indigo-800">
+      <button
+        type="button"
+        onClick={() => navigate('/history?tab=milestones')}
+        className="w-full text-left bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl shadow-sm p-4 border border-indigo-100 dark:border-indigo-800 hover:bg-indigo-100/70 dark:hover:bg-indigo-900/30 transition-colors"
+      >
         <div className="flex items-center justify-between mb-3">
           <span className="text-lg font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-2">
             <MaterialIcon name="emoji_events" className="text-[20px] text-indigo-600 dark:text-indigo-400" />
             Milestones
           </span>
-          <Link
-            to="/history?tab=milestones"
-            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
-          >
-            Open History
-          </Link>
         </div>
         <div className="space-y-2 text-sm">
           <div className="flex items-center justify-between">
@@ -826,33 +988,59 @@ export default function Dashboard() {
               {raceMilestoneReached ? 'Race day reached' : `${daysUntil} days left`}
             </span>
           </div>
+          {lastReachedWeightMilestone && lastReachedWeightMilestoneElapsed && (
+            <div className="py-1">
+              <div className="flex items-center justify-between">
+                <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                  Under {lastReachedWeightMilestone.threshold} kg
+                </span>
+                <span className="text-xs text-amber-600/90 dark:text-amber-400/90">
+                  {formatDateDDMMYYYY(lastReachedWeightMilestone.date)}
+                </span>
+              </div>
+              <div className="text-xs text-amber-600/90 dark:text-amber-400/90">
+                {lastReachedWeightMilestoneElapsed.daysAgo} days | {lastReachedWeightMilestoneElapsed.weeksAgo} weeks | {lastReachedWeightMilestoneElapsed.monthsAgo} months
+              </div>
+            </div>
+          )}
         </div>
-      </div>
+      </button>
 
       {todayCheckins.length > 0 && (
-        <div className="bg-purple-50 dark:bg-purple-900/20 rounded-2xl shadow-sm p-4 border border-purple-100 dark:border-purple-800">
+        <button
+          type="button"
+          onClick={() => setShowCheckin(true)}
+          className="w-full text-left bg-purple-50 dark:bg-purple-900/20 rounded-2xl shadow-sm p-4 border border-purple-100 dark:border-purple-800 hover:bg-purple-100/70 dark:hover:bg-purple-900/30 transition-colors"
+        >
           <div className="flex justify-between items-center mb-2">
             <span className="text-lg font-semibold text-gray-800 dark:text-gray-100">Today's Check-in</span>
-            <button 
-              onClick={() => setShowCheckin(true)}
-              className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-200"
-            >
-              Edit
-            </button>
+            {typeof todayCheckin?.weight === 'number' && (
+              <span className={`inline-flex items-center gap-1 text-lg font-semibold ${getWeightTone(todayCheckin.weight)}`}>
+                <span>{todayCheckin.weight} kg</span>
+                {weightTrendIcon && weightChangeFromLastCheckin !== null && (
+                  <span className={`inline-flex items-center gap-0.5 text-sm ${weightTrendClass}`}>
+                    <MaterialIcon name={weightTrendIcon} className="text-[14px]" />
+                    <span>{Math.abs(weightChangeFromLastCheckin)}</span>
+                  </span>
+                )}
+              </span>
+            )}
           </div>
           <div className="grid grid-cols-4 gap-2 text-xs">
-            {todayCheckins[0]?.weight && <div className="text-center"><span className="font-semibold">{todayCheckins[0].weight}</span> kg</div>}
-            {todayCheckins[0]?.ketones && <div className="text-center"><span className="font-semibold">{todayCheckins[0].ketones}</span> ketones</div>}
-            {todayCheckins[0]?.glucose && <div className="text-center"><span className="font-semibold">{todayCheckins[0].glucose}</span> glucose</div>}
-            {todayCheckins[0]?.heartRate && <div className="text-center"><span className="font-semibold">{todayCheckins[0].heartRate}</span> HR</div>}
-            {todayCheckins[0]?.bpHigh && todayCheckins[0]?.bpLow && (
-              <div className="text-center"><span className="font-semibold">{todayCheckins[0].bpHigh}/{todayCheckins[0].bpLow}</span> BP</div>
+            {typeof todayCheckin?.steps === 'number' && (
+              <div className="text-center"><span className="font-semibold">{todayCheckin.steps}</span> steps</div>
             )}
-            {todayCheckins[0]?.saturation && <div className="text-center"><span className="font-semibold">{todayCheckins[0].saturation}</span> sat%</div>}
-            {todayCheckins[0]?.cholesterol && <div className="text-center"><span className="font-semibold">{todayCheckins[0].cholesterol}</span> chol</div>}
-            {todayCheckins[0]?.ferritin && <div className="text-center"><span className="font-semibold">{todayCheckins[0].ferritin}</span> ferr</div>}
+            {typeof todayCheckin?.ketones === 'number' && <div className="text-center"><span className={`font-semibold ${getKetonesTone(todayCheckin.ketones)}`}>{todayCheckin.ketones}</span> ketones</div>}
+            {typeof todayCheckin?.glucose === 'number' && <div className="text-center"><span className={`font-semibold ${getGlucoseMmolTone(todayCheckin.glucose)}`}>{todayCheckin.glucose}</span> glucose</div>}
+            {typeof todayCheckin?.heartRate === 'number' && <div className="text-center"><span className={`font-semibold ${getHeartRateTone(todayCheckin.heartRate)}`}>{todayCheckin.heartRate}</span> HR</div>}
+            {todayCheckin?.bpHigh && todayCheckin?.bpLow && (
+              <div className="text-center"><span className={`font-semibold ${getBpTone(todayCheckin.bpHigh, todayCheckin.bpLow)}`}>{todayCheckin.bpHigh}/{todayCheckin.bpLow}</span> BP</div>
+            )}
+            {todayCheckin?.saturation && <div className="text-center"><span className="font-semibold">{todayCheckin.saturation}</span> sat%</div>}
+            {todayCheckin?.cholesterol && <div className="text-center"><span className="font-semibold">{todayCheckin.cholesterol}</span> chol</div>}
+            {todayCheckin?.ferritin && <div className="text-center"><span className="font-semibold">{todayCheckin.ferritin}</span> ferr</div>}
           </div>
-        </div>
+        </button>
       )}
 
       {/* BMI Card - from last known weight */}
@@ -915,7 +1103,11 @@ export default function Dashboard() {
       </div>
 
       {/* Steps Card */}
-      <div className="bg-green-50 dark:bg-green-900/20 rounded-2xl shadow-sm p-5 border border-green-100 dark:border-green-800">
+      <button
+        type="button"
+        onClick={() => setShowCheckin(true)}
+        className="w-full text-left bg-green-50 dark:bg-green-900/20 rounded-2xl shadow-sm p-5 border border-green-100 dark:border-green-800 hover:bg-green-100/70 dark:hover:bg-green-900/30 transition-colors"
+      >
         <div className="flex justify-between items-center mb-2">
           <span className="text-lg font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-2">
             <MaterialIcon name="directions_walk" className="text-[20px] text-green-600 dark:text-green-400" />
@@ -932,18 +1124,12 @@ export default function Dashboard() {
             style={{ width: `${getStepsPosition(todaySteps, stepGoal)}%` }}
           />
         </div>
-        <div className="flex justify-between items-center mt-2">
+        <div className="mt-2 text-right">
           <span className="text-sm text-green-700 dark:text-green-300">
             {todaySteps > 0 ? Math.round((todaySteps / stepGoal) * 100) : 0}%
           </span>
-          <button 
-            onClick={() => setShowCheckin(true)}
-            className="text-sm text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-200"
-          >
-            {todaySteps > 0 ? 'Edit' : 'Add steps'}
-          </button>
         </div>
-      </div>
+      </button>
 
       <RaceProgress checkins={checkins} raceGoal={raceGoal} daysUntil={daysUntil} weeksUntil={weeksUntil} />
       <TripWidget trips={trips} userId={userId} onRefresh={loadData} />
@@ -1017,30 +1203,45 @@ export default function Dashboard() {
         ) : (
           <div className="divide-y divide-gray-100 dark:divide-gray-700">
             {logs.logs.map(log => (
-              <button
-                key={log.id}
-                onClick={() => openEdit(log)}
-                className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-              >
-                <div className="flex-1 min-w-0 text-left">
-                  <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{log.name}</div>
-                  <div className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                    {log.brand && <span className="mr-2">{log.brand}</span>}
-                    {log.serving}
-                  </div>
-                </div>
-                <div className="w-14 shrink-0 text-right">
-                  <div className="font-semibold tabular-nums text-gray-900 dark:text-gray-100">{Math.round(log.calories)}</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">kcal</div>
-                </div>
-                <div className="w-12 shrink-0 text-right">
-                  <div className="text-[11px] font-medium tabular-nums leading-tight">
-                    <div className="text-blue-500 dark:text-blue-400">F {Math.round(log.fat)}</div>
-                    <div className="text-red-500 dark:text-red-400">P {Math.round(log.protein)}</div>
-                    <div className="text-amber-500 dark:text-amber-400">C {Math.round(log.netCarbs && log.netCarbs > 0 ? log.netCarbs : log.carbs)}</div>
-                  </div>
-                </div>
-              </button>
+              (() => {
+                const servingDisplay = splitServingDisplay(log.serving);
+                return (
+                  <button
+                    key={log.id}
+                    onClick={() => openEdit(log)}
+                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0 text-left">
+                      <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{log.name}</div>
+                      <div className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                        {log.brand || '-'}
+                      </div>
+                    </div>
+                    <div className="w-14 shrink-0 text-right">
+                      <div className="font-semibold tabular-nums text-gray-900 dark:text-gray-100 truncate">{servingDisplay.value}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{servingDisplay.unit}</div>
+                    </div>
+                    <div className="w-14 shrink-0 text-right">
+                      <div className="font-semibold tabular-nums text-gray-900 dark:text-gray-100">{Math.round(log.calories)}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">kcal</div>
+                    </div>
+                    <div className="w-7 shrink-0 text-right">
+                      <div className="text-[11px] font-medium tabular-nums leading-tight text-right">
+                        <div className="text-white">{Math.round(log.fat)}</div>
+                        <div className="text-white">{Math.round(log.protein)}</div>
+                        <div className="text-white">{Math.round(log.netCarbs && log.netCarbs > 0 ? log.netCarbs : log.carbs)}</div>
+                      </div>
+                    </div>
+                    <div className="w-3 shrink-0 -ml-1">
+                      <div className="text-[11px] font-semibold tabular-nums leading-tight text-left">
+                        <div className="text-blue-500 dark:text-blue-400">F</div>
+                        <div className="text-red-500 dark:text-red-400">P</div>
+                        <div className="text-amber-500 dark:text-amber-400">C</div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })()
             ))}
           </div>
         )}
@@ -1048,3 +1249,5 @@ export default function Dashboard() {
     </div>
   );
 }
+
+

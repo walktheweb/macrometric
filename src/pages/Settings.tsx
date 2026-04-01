@@ -113,6 +113,7 @@ export default function Settings() {
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
   const [releaseNotes, setReleaseNotes] = useState<ReleaseNoteItem[]>([
+    { id: 'seed-20260401-v122', date: '01.04.2026', note: 'v1.2.2 - Persistent auto weight milestones with backfill sync, fixed Under 80kg achievement detection (e.g. 79.7), and header/menu icon layout updates', createdAt: 202604010000 },
     { id: 'seed-20260330-v120', date: '30.03.2026', note: 'v1.2.0 - Event goals list (add/edit/delete), improved milestones flow, and safer race projection', createdAt: 202603300000 },
     { id: 'seed-20260329-v110', date: '29.03.2026', note: 'v1.1.0 - Account login (email/password) across devices', createdAt: 202603290000 },
     { id: 'seed-20260329-v100', date: '29.03.2026', note: 'v1.0.0 - MacroMetric official first release', createdAt: 202603290001 },

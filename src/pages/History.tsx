@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { getHistory, DayLog, getCheckins, getRaceGoal, RaceGoal, deleteCheckin, Checkin, getEventGoals, EventGoalItem } from '../lib/api';
+import { getHistory, DayLog, getCheckins, getRaceGoal, RaceGoal, deleteCheckin, Checkin, getEventGoals, EventGoalItem, getMilestones, Milestone, syncAutoWeightMilestones } from '../lib/api';
 import { formatDateDDMMYYYY } from '../lib/date';
 import MaterialIcon from '../components/MaterialIcon';
 
@@ -11,6 +11,7 @@ export default function History() {
   const [history, setHistory] = useState<Record<string, DayLog>>({});
   const [checkins, setCheckins] = useState<Checkin[]>([]);
   const [allCheckins, setAllCheckins] = useState<Checkin[]>([]);
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [eventGoals, setEventGoals] = useState<EventGoalItem[]>([]);
   const [raceGoal, setRaceGoal] = useState<RaceGoal | null>(null);
   const [loading, setLoading] = useState(true);
@@ -30,17 +31,20 @@ export default function History() {
   const loadData = async () => {
     if (!userId) return;
     setLoading(true);
-    const [historyData, checkinsData, raceGoalData, eventGoalsData] = await Promise.all([
+    await syncAutoWeightMilestones(userId);
+    const [historyData, checkinsData, raceGoalData, eventGoalsData, milestonesData] = await Promise.all([
       getHistory(userId, days),
       getCheckins(userId),
       getRaceGoal(userId),
       getEventGoals(userId),
+      getMilestones(userId),
     ]);
     setHistory(historyData);
     setAllCheckins(checkinsData);
     setCheckins(checkinsData.slice(0, 30));
     setRaceGoal(raceGoalData);
     setEventGoals(eventGoalsData);
+    setMilestones(milestonesData);
     setLoading(false);
   };
 
@@ -87,14 +91,6 @@ export default function History() {
   }
 
   const sortedDates = Object.keys(history).sort((a, b) => b.localeCompare(a));
-  const latestWeightEntry = allCheckins.find((item) => typeof item.weight === 'number' && Number.isFinite(item.weight));
-  const latestWeight = latestWeightEntry?.weight ?? null;
-  const weightedAsc = allCheckins
-    .filter((item) => typeof item.weight === 'number' && Number.isFinite(item.weight))
-    .slice()
-    .sort((a, b) => a.date.localeCompare(b.date));
-  const firstWeight = weightedAsc[0]?.weight ?? null;
-  const targetWeight = raceGoal?.targetWeight ?? null;
   const today = new Date();
   const ketosisEntries = allCheckins
     .filter((item) => typeof item.ketones === 'number' && Number.isFinite(item.ketones))
@@ -106,26 +102,10 @@ export default function History() {
     const eventDate = new Date(`${goal.raceDate}T00:00:00`);
     return eventDate.getTime() <= new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
   });
-
-  const weightAutoGoals: Array<{ threshold: number; done: boolean }> = [];
-  if (firstWeight !== null && latestWeight !== null) {
-    const fromThreshold = Math.floor(firstWeight) - 1;
-    const targetThreshold = targetWeight !== null ? Math.floor(targetWeight) : Math.floor(latestWeight);
-    if (fromThreshold >= targetThreshold) {
-      for (let threshold = fromThreshold; threshold >= targetThreshold; threshold -= 1) {
-        weightAutoGoals.push({
-          threshold,
-          done: latestWeight < threshold,
-        });
-      }
-    }
-  }
-  const achievedWeightMilestones = weightAutoGoals
-    .filter((goal) => goal.done)
-    .map((goal) => {
-      const firstHit = weightedAsc.find((entry) => (entry.weight || Number.POSITIVE_INFINITY) < goal.threshold);
-      return { threshold: goal.threshold, date: firstHit?.date || latestWeightEntry?.date || '' };
-    });
+  const achievedWeightMilestones = milestones
+    .filter((item) => item.done && (item.notes || '').startsWith('auto:weight'))
+    .slice()
+    .sort((a, b) => b.date.localeCompare(a.date));
 
   return (
     <div className="space-y-4">
@@ -396,11 +376,11 @@ export default function History() {
             <div className="text-sm font-semibold text-indigo-700 dark:text-indigo-300 mb-3">Achieved Milestones</div>
             <div className="space-y-2">
               {achievedWeightMilestones.map((item) => (
-                <div key={`weight-${item.threshold}`} className="rounded-lg border border-green-200 dark:border-green-800 bg-white/80 dark:bg-green-950/20 p-3">
+                <div key={item.id} className="rounded-lg border border-green-200 dark:border-green-800 bg-white/80 dark:bg-green-950/20 p-3">
                   <div className="flex items-center justify-between gap-2 text-sm">
                     <div className="inline-flex items-center gap-2 text-gray-800 dark:text-gray-100">
                       <MaterialIcon name="monitor_weight" className="text-[18px] text-green-600 dark:text-green-400" />
-                      Under {item.threshold} kg
+                      {item.title}
                     </div>
                     <span className="text-green-600 dark:text-green-400 font-semibold">Done</span>
                   </div>

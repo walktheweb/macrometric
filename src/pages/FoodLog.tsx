@@ -32,6 +32,7 @@ export default function FoodLog() {
   const [showNutritionScanner, setShowNutritionScanner] = useState(false);
   const [manualMode, setManualMode] = useState<'myFoods' | 'logOnly'>('myFoods');
   const [importText, setImportText] = useState('');
+  const [manualLogAmountInput, setManualLogAmountInput] = useState('100');
   const [quickName, setQuickName] = useState('');
   const [quickGrams, setQuickGrams] = useState('100');
   const [labelDrafts, setLabelDrafts] = useState<LabelDraft[]>([]);
@@ -112,6 +113,39 @@ export default function FoodLog() {
       window.dispatchEvent(new CustomEvent('macrometric:header-context', { detail: null }));
     };
   }, [showManualAdd, editingFood, manualMode, manualFood, userId]);
+
+  useEffect(() => {
+    if (!selectedFood || showManualAdd) return;
+
+    window.dispatchEvent(
+      new CustomEvent('macrometric:header-context', {
+        detail: {
+          showBack: true,
+          buttons: [{ id: 'add-selected-food', label: 'Add to Log', tone: 'primary' }],
+        },
+      })
+    );
+
+    const handleHeaderBack = () => {
+      setSelectedFood(null);
+    };
+
+    const handleHeaderAction = async (event: Event) => {
+      const actionId = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (actionId === 'add-selected-food') {
+        await handleAdd(selectedFood);
+      }
+    };
+
+    window.addEventListener('macrometric:header-back', handleHeaderBack);
+    window.addEventListener('macrometric:header-action', handleHeaderAction as EventListener);
+
+    return () => {
+      window.removeEventListener('macrometric:header-back', handleHeaderBack);
+      window.removeEventListener('macrometric:header-action', handleHeaderAction as EventListener);
+      window.dispatchEvent(new CustomEvent('macrometric:header-context', { detail: null }));
+    };
+  }, [selectedFood, showManualAdd, quantityInput, quantityType, myFoods, userId]);
 
   const search = async () => {
     if (!userId) return;
@@ -203,6 +237,7 @@ export default function FoodLog() {
     setEditingFood(null);
     setShowImportInput(false);
     setImportText('');
+    setManualLogAmountInput('100');
     setManualFood({
       name: '',
       brand: null,
@@ -309,8 +344,25 @@ export default function FoodLog() {
         return;
       }
       const savedFood = await addMyFood(userId, { ...rest, brand: brand || null });
-      await addLog(userId, { ...savedFood, quantity: 1, brand: brand || null });
-      navigate('/');
+      const parsedAmount = Number(manualLogAmountInput.replace(',', '.'));
+      const servingSize = Number(savedFood.servingSize) || 100;
+      const safeAmount = Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount : servingSize;
+      const quantity = safeAmount / servingSize;
+      const netCarbsPerUnit = savedFood.netCarbs && savedFood.netCarbs > 0 ? savedFood.netCarbs : savedFood.carbs;
+      await addLog(userId, {
+        ...savedFood,
+        calories: Math.round((savedFood.calories || 0) * quantity * 10) / 10,
+        protein: Math.round((savedFood.protein || 0) * quantity * 10) / 10,
+        carbs: Math.round((savedFood.carbs || 0) * quantity * 10) / 10,
+        fat: Math.round((savedFood.fat || 0) * quantity * 10) / 10,
+        netCarbs: Math.round((netCarbsPerUnit || 0) * quantity * 10) / 10,
+        serving: `${Math.round(safeAmount * 10) / 10}g`,
+        quantity,
+        brand: brand || null,
+      });
+      await search();
+      setShowManualAdd(false);
+      setEditingFood(null);
       return;
     }
     
@@ -425,13 +477,6 @@ export default function FoodLog() {
     
     return (
       <div className="space-y-4">
-        <button
-          onClick={() => setSelectedFood(null)}
-          className="text-primary-600 dark:text-blue-400 font-medium flex items-center gap-1"
-        >
-          Back to search
-        </button>
-        
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-1">{selectedFood.name}</h2>
           {selectedFood.brand && (
@@ -471,6 +516,7 @@ export default function FoodLog() {
                 autoFocus
                 value={quantityInput}
                 onChange={(e) => setQuantityInput(e.target.value)}
+                onFocus={(e) => e.currentTarget.select()}
                 onBlur={() => {
                   const parsed = Number(quantityInput);
                   const safe = Number.isFinite(parsed) && parsed > 0 ? parsed : 0.1;
@@ -514,12 +560,6 @@ export default function FoodLog() {
             </div>
           </div>
           
-          <button
-            onClick={() => handleAdd(selectedFood)}
-            className="w-full py-3 bg-primary-500 text-white font-semibold rounded-xl hover:bg-primary-600 transition-colors"
-          >
-            Add to Log
-          </button>
         </div>
       </div>
     );
@@ -607,31 +647,23 @@ export default function FoodLog() {
             </div>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 mb-4">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Package Info</h3>
-            <div className="grid grid-cols-2 gap-3">
+          {!editingFood && manualMode === 'myFoods' && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-4 mb-4">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Today's Log</h3>
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Package Weight (g)</label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Amount to Add (g)</label>
                 <input
                   type="number"
-                  value={manualFood.packageWeight || ''}
-                  onChange={(e) => setManualFood({ ...manualFood, packageWeight: Number(e.target.value) || 0 })}
-                  placeholder="e.g. 500"
-                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Items in Package</label>
-                <input
-                  type="number"
-                  value={manualFood.packageCount || ''}
-                  onChange={(e) => setManualFood({ ...manualFood, packageCount: Number(e.target.value) || 0 })}
-                  placeholder="e.g. 10"
+                  min="0.1"
+                  step="0.1"
+                  value={manualLogAmountInput}
+                  onChange={(e) => setManualLogAmountInput(e.target.value)}
+                  placeholder="e.g. 120"
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-sm"
                 />
               </div>
             </div>
-          </div>
+          )}
 
           <div className="bg-white dark:bg-gray-800 rounded-xl p-4 mb-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Serving</h3>
@@ -698,6 +730,32 @@ export default function FoodLog() {
                   onChange={(e) => setManualFood({ ...manualFood, netCarbs: Number(e.target.value) || 0 })}
                   placeholder="0"
                   className="w-full px-3 py-2 rounded-lg border-purple-200 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/30 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 outline-none text-sm"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 mb-4">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Package Info</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Package Weight (g)</label>
+                <input
+                  type="number"
+                  value={manualFood.packageWeight || ''}
+                  onChange={(e) => setManualFood({ ...manualFood, packageWeight: Number(e.target.value) || 0 })}
+                  placeholder="e.g. 500"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Items in Package</label>
+                <input
+                  type="number"
+                  value={manualFood.packageCount || ''}
+                  onChange={(e) => setManualFood({ ...manualFood, packageCount: Number(e.target.value) || 0 })}
+                  placeholder="e.g. 10"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-sm"
                 />
               </div>
             </div>

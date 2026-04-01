@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import MaterialIcon from './MaterialIcon';
-import { logout } from '../lib/api';
+import { getTodayCheckin, logout } from '../lib/api';
+import { useAuth } from '../contexts/AuthContext';
 
 const navItems = [
   { to: '/add', label: 'Food', icon: 'add_circle' },
-  { to: '/trips', label: 'Cycling', icon: 'directions_bike' },
   { to: '/history', label: 'History', icon: 'history' },
 ];
 
@@ -23,11 +23,13 @@ type HeaderContextState = {
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const isTodayPage = location.pathname === '/';
+  const { userId } = useAuth();
   const isMaintenancePage = location.pathname === '/my-foods' || location.pathname === '/food-entries';
   const mainRef = useRef<HTMLElement | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [headerContext, setHeaderContext] = useState<HeaderContextState>(null);
+  const [hasTodayCheckin, setHasTodayCheckin] = useState(false);
+  const isCheckinEditorOpen = !!headerContext?.buttons?.some((button) => button.id.includes('checkin'));
 
   const focusFirstInput = () => {
     if (!mainRef.current) return;
@@ -74,12 +76,46 @@ export default function Layout() {
     };
   }, []);
 
+  useEffect(() => {
+    const refreshTodayCheckinStatus = async () => {
+      if (!userId) {
+        setHasTodayCheckin(false);
+        return;
+      }
+      const todayCheckin = await getTodayCheckin(userId);
+      setHasTodayCheckin(!!todayCheckin);
+    };
+
+    refreshTodayCheckinStatus();
+  }, [userId, location.pathname]);
+
+  useEffect(() => {
+    const onCheckinUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent<{ hasTodayCheckin?: boolean }>;
+      if (typeof customEvent.detail?.hasTodayCheckin === 'boolean') {
+        setHasTodayCheckin(customEvent.detail.hasTodayCheckin);
+      }
+    };
+    window.addEventListener('macrometric:checkin-updated', onCheckinUpdated as EventListener);
+    return () => {
+      window.removeEventListener('macrometric:checkin-updated', onCheckinUpdated as EventListener);
+    };
+  }, []);
+
   const goHome = () => {
     if (location.pathname === '/') {
       window.dispatchEvent(new Event('macrometric:today-nav'));
       return;
     }
     navigate('/');
+  };
+
+  const openCheckin = () => {
+    if (location.pathname === '/') {
+      window.dispatchEvent(new Event('macrometric:open-checkin'));
+      return;
+    }
+    navigate('/?openCheckin=1');
   };
 
   const triggerHeaderBack = () => {
@@ -137,7 +173,7 @@ export default function Layout() {
                   </button>
                 ))}
               </div>
-            ) : isTodayPage ? (
+            ) : (
               navItems.map(({ to, label, icon }) => (
                 <NavLink
                   key={to}
@@ -154,76 +190,121 @@ export default function Layout() {
                   <MaterialIcon name={icon} className="text-[28px]" />
                 </NavLink>
               ))
-            ) : null}
+            )}
           </div>
-          <div
-            className="relative"
-            onMouseEnter={() => setMoreOpen(true)}
-            onMouseLeave={() => setMoreOpen(false)}
-          >
-            <button
-              type="button"
-              onClick={() => setMoreOpen((prev) => !prev)}
-              title="Options"
-              aria-label="Open options"
-              className="flex items-center justify-center p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
-            >
-              <MaterialIcon name={moreOpen ? 'close' : 'menu'} className="text-[28px]" />
-            </button>
-            <div
-              className={`absolute right-0 top-0 z-20 w-40 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden transition-all duration-200 ${
-                moreOpen ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-2 pointer-events-none'
-              }`}
-            >
-              <NavLink
-                to="/food-entries"
-                onClick={() => setMoreOpen(false)}
-                className={({ isActive }) =>
-                  `flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
-                    isActive
-                      ? 'text-primary-900 bg-primary-200 font-medium dark:text-blue-100 dark:bg-blue-900/70'
-                      : 'text-gray-800 hover:bg-gray-200 dark:text-gray-100 dark:hover:bg-gray-700'
-                  }`
-                }
-              >
-                <MaterialIcon name="edit_note" className="text-[18px]" />
-                <span>Entry Manager</span>
-              </NavLink>
-              <NavLink
-                to="/my-foods"
-                onClick={() => setMoreOpen(false)}
-                className={({ isActive }) =>
-                  `flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
-                    isActive
-                      ? 'text-primary-900 bg-primary-200 font-medium dark:text-blue-100 dark:bg-blue-900/70'
-                      : 'text-gray-800 hover:bg-gray-200 dark:text-gray-100 dark:hover:bg-gray-700'
-                  }`
-                }
-              >
-                <MaterialIcon name="restaurant_menu" className="text-[18px]" />
-                <span>Food Manager</span>
-              </NavLink>
-              <NavLink
-                to="/settings"
-                onClick={() => setMoreOpen(false)}
-                className={({ isActive }) =>
-                  `flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
-                    isActive
-                      ? 'text-primary-900 bg-primary-200 font-medium dark:text-blue-100 dark:bg-blue-900/70'
-                      : 'text-gray-800 hover:bg-gray-200 dark:text-gray-100 dark:hover:bg-gray-700'
-                  }`
-                }
-              >
-                <MaterialIcon name="settings" className="text-[18px]" />
-                <span>Settings</span>
-              </NavLink>
+          <div className="flex items-center gap-1">
+            {!isCheckinEditorOpen && (
               <button
-                onClick={handleLogout}
-                className="w-full border-t border-gray-200 flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                type="button"
+                onClick={openCheckin}
+                title={hasTodayCheckin ? 'Check-in done today (tap to edit)' : 'Do first check-in today'}
+                aria-label={hasTodayCheckin ? 'Edit today check-in' : 'Do today check-in'}
+                className={`flex items-center justify-center p-2 rounded-lg transition-colors ${
+                  hasTodayCheckin
+                    ? 'bg-white text-gray-700 hover:bg-gray-50'
+                    : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                }`}
               >
-                <MaterialIcon name="logout" className="text-[18px]" />
-                <span>Logout</span>
+                <MaterialIcon name="check_circle" className="text-[28px]" />
               </button>
+            )}
+            <div
+              className="relative"
+              onMouseEnter={() => setMoreOpen(true)}
+              onMouseLeave={() => setMoreOpen(false)}
+            >
+              <button
+                type="button"
+                onClick={() => setMoreOpen((prev) => !prev)}
+                title="Options"
+                aria-label="Open options"
+                className="flex items-center justify-center p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                <MaterialIcon name={moreOpen ? 'close' : 'menu'} className="text-[28px]" />
+              </button>
+              <div
+                className={`absolute right-0 top-0 z-20 w-40 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden transition-all duration-200 ${
+                  moreOpen ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-2 pointer-events-none'
+                }`}
+              >
+                <NavLink
+                  to="/food-entries"
+                  onClick={() => setMoreOpen(false)}
+                  className={({ isActive }) =>
+                    `flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                      isActive
+                        ? 'text-primary-900 bg-primary-200 font-medium dark:text-blue-100 dark:bg-blue-900/70'
+                        : 'text-gray-800 hover:bg-gray-200 dark:text-gray-100 dark:hover:bg-gray-700'
+                    }`
+                  }
+                >
+                  <MaterialIcon name="edit_note" className="text-[18px]" />
+                  <span>Entry Manager</span>
+                </NavLink>
+                <NavLink
+                  to="/my-foods"
+                  onClick={() => setMoreOpen(false)}
+                  className={({ isActive }) =>
+                    `flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                      isActive
+                        ? 'text-primary-900 bg-primary-200 font-medium dark:text-blue-100 dark:bg-blue-900/70'
+                        : 'text-gray-800 hover:bg-gray-200 dark:text-gray-100 dark:hover:bg-gray-700'
+                    }`
+                  }
+                >
+                  <MaterialIcon name="restaurant_menu" className="text-[18px]" />
+                  <span>Food Manager</span>
+                </NavLink>
+                <NavLink
+                  to="/trips"
+                  onClick={() => setMoreOpen(false)}
+                  className={({ isActive }) =>
+                    `flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                      isActive
+                        ? 'text-primary-900 bg-primary-200 font-medium dark:text-blue-100 dark:bg-blue-900/70'
+                        : 'text-gray-800 hover:bg-gray-200 dark:text-gray-100 dark:hover:bg-gray-700'
+                    }`
+                  }
+                >
+                  <MaterialIcon name="directions_bike" className="text-[18px]" />
+                  <span>Cycling</span>
+                </NavLink>
+                <NavLink
+                  to="/settings"
+                  onClick={() => setMoreOpen(false)}
+                  className={({ isActive }) =>
+                    `flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                      isActive
+                        ? 'text-primary-900 bg-primary-200 font-medium dark:text-blue-100 dark:bg-blue-900/70'
+                        : 'text-gray-800 hover:bg-gray-200 dark:text-gray-100 dark:hover:bg-gray-700'
+                    }`
+                  }
+                >
+                  <MaterialIcon name="settings" className="text-[18px]" />
+                  <span>Settings</span>
+                </NavLink>
+                <NavLink
+                  to="/help"
+                  onClick={() => setMoreOpen(false)}
+                  className={({ isActive }) =>
+                    `flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                      isActive
+                        ? 'text-primary-900 bg-primary-200 font-medium dark:text-blue-100 dark:bg-blue-900/70'
+                        : 'text-gray-800 hover:bg-gray-200 dark:text-gray-100 dark:hover:bg-gray-700'
+                    }`
+                  }
+                >
+                  <MaterialIcon name="help" className="text-[18px]" />
+                  <span>Help</span>
+                </NavLink>
+                <button
+                  onClick={handleLogout}
+                  className="w-full border-t border-gray-200 flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  <MaterialIcon name="logout" className="text-[18px]" />
+                  <span>Logout</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
