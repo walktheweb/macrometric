@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { searchAllFoods, addLog, Food, addMyFood, updateMyFoodAndLogs, deleteMyFood } from '../lib/api';
 import NutritionScanner from '../components/NutritionScanner';
 import MaterialIcon from '../components/MaterialIcon';
+import { useEffect, useRef, useState } from 'react';
 
 type LabelDraft = {
   id: string;
@@ -38,6 +39,7 @@ export default function FoodLog() {
   const [labelDrafts, setLabelDrafts] = useState<LabelDraft[]>([]);
   const [editingFood, setEditingFood] = useState<Food | null>(null);
   const quickPhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const searchRequestIdRef = useRef(0);
   const [manualFood, setManualFood] = useState<Food>({
     name: '',
     brand: null,
@@ -149,16 +151,20 @@ export default function FoodLog() {
 
   const search = async () => {
     if (!userId) return;
+    const requestId = ++searchRequestIdRef.current;
     setLoading(true);
     setSearchError(null);
     try {
       const { myFoods: my, databaseFoods: db } = await searchAllFoods(userId, query);
+      if (requestId !== searchRequestIdRef.current) return;
       setMyFoods(my);
       setDatabaseFoods(db);
     } catch (error) {
+      if (requestId !== searchRequestIdRef.current) return;
       console.error('Search failed:', error);
       setSearchError('Food database temporarily unavailable. Try adding foods manually.');
     } finally {
+      if (requestId !== searchRequestIdRef.current) return;
       setLoading(false);
     }
   };

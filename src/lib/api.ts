@@ -490,7 +490,10 @@ export async function searchFoods(query: string): Promise<{ products: Food[] }> 
   
   try {
     const response = await fetch(
-      `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=20`
+      `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=20`,
+      {
+        cache: 'no-store',
+      }
     );
     const data = await response.json();
     
@@ -517,7 +520,10 @@ export async function searchFoods(query: string): Promise<{ products: Food[] }> 
 export async function searchByBarcode(barcode: string): Promise<{ products: Food[] }> {
   try {
     const response = await fetch(
-      `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`
+      `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`,
+      {
+        cache: 'no-store',
+      }
     );
     const data = await response.json();
     
@@ -760,9 +766,7 @@ export async function searchAllFoods(userId: string, query: string): Promise<{ m
     const searchUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=30&fields=code,product_name,product_name_en,brands,nutriments,serving_size`;
     
     const response = await fetch(searchUrl, {
-      headers: {
-        'User-Agent': 'MacroMetric/1.0 (Food Tracker App)',
-      }
+      cache: 'no-store',
     });
     
     if (!response.ok) {
