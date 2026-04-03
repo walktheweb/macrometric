@@ -5,6 +5,7 @@ import { getTodayCheckin, logout } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 
 declare const __APP_VERSION__: string;
+declare const __BUILD_VERSION__: string;
 
 const navItems = [
   { to: '/add', label: 'Food', icon: 'add_circle' },
@@ -197,9 +198,9 @@ export default function Layout() {
           <div className="flex items-center gap-2">
             <div
               className="hidden sm:block text-[11px] leading-none px-2 py-1 rounded-full bg-gray-100 text-gray-500"
-              title={`Version ${__APP_VERSION__}`}
+              title={`Version ${__APP_VERSION__} | Build ${__BUILD_VERSION__}`}
             >
-              v{__APP_VERSION__}
+              v{__APP_VERSION__}.{__BUILD_VERSION__}
             </div>
             {!isCheckinEditorOpen && (
               <button
@@ -318,7 +319,7 @@ export default function Layout() {
         </div>
       </header>
       <div className="sm:hidden max-w-lg mx-auto px-4 pt-2">
-        <div className="text-[11px] text-gray-500 text-right">v{__APP_VERSION__}</div>
+        <div className="text-[11px] text-gray-500 text-right">v{__APP_VERSION__}.{__BUILD_VERSION__}</div>
       </div>
       
       <main
