@@ -377,7 +377,7 @@ export default function Dashboard() {
       window.removeEventListener('macrometric:header-action', handleHeaderAction as EventListener);
       window.dispatchEvent(new CustomEvent('macrometric:header-context', { detail: null }));
     };
-  }, [editingLog, showCheckin, checkinData]);
+  }, [editingLog, showCheckin, checkinData, editQuantityInput, editQuantityType]);
 
   useEffect(() => {
     if (!editCheckinId || checkins.length === 0) return;
