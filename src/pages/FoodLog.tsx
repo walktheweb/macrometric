@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { searchAllFoods, addLog, Food, addMyFood, updateMyFoodAndLogs, deleteMyFood } from '../lib/api';
+import { searchAllFoods, searchMyFoods, addLog, Food, addMyFood, updateMyFoodAndLogs, deleteMyFood } from '../lib/api';
 import NutritionScanner from '../components/NutritionScanner';
 import MaterialIcon from '../components/MaterialIcon';
-import { useEffect, useRef, useState } from 'react';
 
 type LabelDraft = {
   id: string;
@@ -58,10 +57,24 @@ export default function FoodLog() {
     if (!userId || query.length < 2) {
       setMyFoods([]);
       setDatabaseFoods([]);
+      setSearchError(null);
       return;
     }
-    const timer = setTimeout(() => search(), 300);
-    return () => clearTimeout(timer);
+
+    const requestId = ++searchRequestIdRef.current;
+    setSearchError(null);
+    setDatabaseFoods([]);
+
+    searchMyFoods(userId, query)
+      .then((foods) => {
+        if (requestId !== searchRequestIdRef.current) return;
+        setMyFoods(foods);
+      })
+      .catch((error) => {
+        if (requestId !== searchRequestIdRef.current) return;
+        console.error('My foods search failed:', error);
+        setMyFoods([]);
+      });
   }, [query, userId]);
 
   useEffect(() => {
@@ -151,6 +164,12 @@ export default function FoodLog() {
 
   const search = async () => {
     if (!userId) return;
+    if (query.trim().length < 2) {
+      setDatabaseFoods([]);
+      setSearchError(null);
+      return;
+    }
+
     const requestId = ++searchRequestIdRef.current;
     setLoading(true);
     setSearchError(null);
@@ -167,6 +186,10 @@ export default function FoodLog() {
       if (requestId !== searchRequestIdRef.current) return;
       setLoading(false);
     }
+  };
+
+  const handleSearchSubmit = async () => {
+    await search();
   };
 
   const getDisplayCarbs = (food: Food) => food.netCarbs && food.netCarbs > 0 ? food.netCarbs : food.carbs;
@@ -780,9 +803,21 @@ export default function FoodLog() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                void handleSearchSubmit();
+              }
+            }}
             placeholder="Search your foods or database..."
             className="flex-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
           />
+          <button
+            onClick={() => void handleSearchSubmit()}
+            className="px-4 py-3 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors"
+            title="Search OpenFoodFacts"
+          >
+            <MaterialIcon name="search" className="text-[22px]" />
+          </button>
           <button
             onClick={() => setShowNutritionScanner(true)}
             className="px-4 py-3 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
