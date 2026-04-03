@@ -196,7 +196,7 @@ export default function FoodLog() {
 
   const handleAdd = async (food: Food) => {
     if (!userId) return;
-    const parsedQuantity = Number(quantityInput);
+    const parsedQuantity = Number(quantityInput.replace(',', '.'));
     const safeQuantity = Number.isFinite(parsedQuantity) && parsedQuantity > 0 ? parsedQuantity : 1;
     let foodToLog = food;
     const isFromMyFoods = myFoods.some(f => f.id === food.id);
@@ -222,9 +222,12 @@ export default function FoodLog() {
       fat: foodToLog.fat,
     };
 
+    const servingSize = Number(foodToLog.servingSize) || 100;
     let multiplier = safeQuantity;
+    let quantityToSave = safeQuantity;
     if (quantityType === 'grams') {
-      multiplier = safeQuantity / 100;
+      quantityToSave = safeQuantity / servingSize;
+      multiplier = quantityToSave;
     }
     
     const loggedFood = {
@@ -234,7 +237,7 @@ export default function FoodLog() {
       carbs: Math.round(displayCarbs * multiplier * 10) / 10,
       fat: Math.round(foodToLog.fat * multiplier * 10) / 10,
       serving: quantityType === 'grams' ? `${safeQuantity}g` : `${safeQuantity}`,
-      quantity: safeQuantity,
+      quantity: quantityToSave,
       baseMacros,
     };
     
