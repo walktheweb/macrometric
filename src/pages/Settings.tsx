@@ -1,7 +1,7 @@
 import { useState, useEffect, ReactNode, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { getGoals, updateGoals, getRaceGoal, saveRaceGoal, getDaysUntilRace, changePassword, getStepGoal, saveStepGoal as saveStepGoalApi, exportUserData, importUserData, getEventGoals, saveEventGoalItem, deleteEventGoalItem, setPrimaryEventGoal, EventGoalItem, getReleaseNotes, addReleaseNote as addReleaseNoteApi, getFeatureRequests, saveFeatureRequest as saveFeatureRequestApi, deleteFeatureRequest as deleteFeatureRequestApi, ReleaseNoteItem, FeatureRequestItem } from '../lib/api';
+import { getGoals, updateGoals, getRaceGoal, saveRaceGoal, getDaysUntilRace, changePassword, getStepGoal, saveStepGoal as saveStepGoalApi, exportUserData, importUserData, getEventGoals, saveEventGoalItem, deleteEventGoalItem, setPrimaryEventGoal, EventGoalItem, getReleaseNotes, addReleaseNote as addReleaseNoteApi, getFeatureRequests, saveFeatureRequest as saveFeatureRequestApi, deleteFeatureRequest as deleteFeatureRequestApi, reorderFeatureRequests as reorderFeatureRequestsApi, ReleaseNoteItem, FeatureRequestItem } from '../lib/api';
 import { formatDateDDMMYYYY } from '../lib/date';
 import MaterialIcon from '../components/MaterialIcon';
 
@@ -129,6 +129,7 @@ export default function Settings() {
   const [newFeature, setNewFeature] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
+  const [featureStatus, setFeatureStatus] = useState('');
   const [newReleaseNote, setNewReleaseNote] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [backupStatus, setBackupStatus] = useState('');
@@ -395,10 +396,16 @@ export default function Settings() {
   const addFeatureRequest = async () => {
     if (!userId) return;
     if (!newFeature.trim()) return;
-    await saveFeatureRequestApi(userId, { text: newFeature.trim() });
-    const updated = await getFeatureRequests(userId);
-    setFeatureRequests(updated);
-    setNewFeature('');
+    try {
+      setFeatureStatus('');
+      await saveFeatureRequestApi(userId, { text: newFeature.trim() });
+      const updated = await getFeatureRequests(userId);
+      setFeatureRequests(updated);
+      setNewFeature('');
+      setFeatureStatus('Feature request saved.');
+    } catch (error) {
+      setFeatureStatus(error instanceof Error ? error.message : 'Failed to save feature request');
+    }
   };
 
   const startEdit = (id: string, text: string) => {
@@ -409,11 +416,22 @@ export default function Settings() {
   const saveEdit = async () => {
     if (!userId) return;
     if (!editingId || !editText.trim()) return;
-    await saveFeatureRequestApi(userId, { id: editingId, text: editText.trim() });
-    const updated = await getFeatureRequests(userId);
-    setFeatureRequests(updated);
-    setEditingId(null);
-    setEditText('');
+    try {
+      setFeatureStatus('');
+      const existing = featureRequests.find((item) => item.id === editingId);
+      await saveFeatureRequestApi(userId, {
+        id: editingId,
+        text: editText.trim(),
+        createdAt: existing?.createdAt,
+      });
+      const updated = await getFeatureRequests(userId);
+      setFeatureRequests(updated);
+      setEditingId(null);
+      setEditText('');
+      setFeatureStatus('Feature request updated.');
+    } catch (error) {
+      setFeatureStatus(error instanceof Error ? error.message : 'Failed to update feature request');
+    }
   };
 
   const cancelEdit = () => {
@@ -423,9 +441,39 @@ export default function Settings() {
 
   const deleteFeatureRequest = async (id: string) => {
     if (!userId) return;
-    await deleteFeatureRequestApi(userId, id);
-    const updated = await getFeatureRequests(userId);
-    setFeatureRequests(updated);
+    try {
+      setFeatureStatus('');
+      await deleteFeatureRequestApi(userId, id);
+      const updated = await getFeatureRequests(userId);
+      setFeatureRequests(updated);
+      setFeatureStatus('Feature request deleted.');
+    } catch (error) {
+      setFeatureStatus(error instanceof Error ? error.message : 'Failed to delete feature request');
+    }
+  };
+
+  const moveFeatureRequest = async (id: string, direction: 'up' | 'down') => {
+    if (!userId) return;
+    const index = featureRequests.findIndex((item) => item.id === id);
+    if (index === -1) return;
+    const nextIndex = direction === 'up' ? index - 1 : index + 1;
+    if (nextIndex < 0 || nextIndex >= featureRequests.length) return;
+
+    const nextItems = [...featureRequests];
+    const [moved] = nextItems.splice(index, 1);
+    nextItems.splice(nextIndex, 0, moved);
+
+    try {
+      setFeatureStatus('');
+      setFeatureRequests(nextItems);
+      const saved = await reorderFeatureRequestsApi(userId, nextItems);
+      setFeatureRequests(saved);
+      setFeatureStatus('Feature request priority updated.');
+    } catch (error) {
+      setFeatureStatus(error instanceof Error ? error.message : 'Failed to reorder feature requests');
+      const updated = await getFeatureRequests(userId);
+      setFeatureRequests(updated);
+    }
   };
 
   const handleExportData = async () => {
@@ -1099,6 +1147,11 @@ export default function Settings() {
 
           <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
             <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-2">Feature Requests / Todo</h3>
+            {featureStatus && (
+              <div className="mb-3 text-sm text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 rounded-lg px-3 py-2">
+                {featureStatus}
+              </div>
+            )}
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {featureRequests.length === 0 && (
                 <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-2">No feature requests yet</p>
@@ -1119,6 +1172,24 @@ export default function Settings() {
                     </>
                   ) : (
                     <>
+                      <div className="flex flex-col">
+                        <button
+                          onClick={() => moveFeatureRequest(feature.id, 'up')}
+                          className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 p-0.5"
+                          title="Move up"
+                          disabled={featureRequests[0]?.id === feature.id}
+                        >
+                          <MaterialIcon name="keyboard_arrow_up" className="text-[18px]" />
+                        </button>
+                        <button
+                          onClick={() => moveFeatureRequest(feature.id, 'down')}
+                          className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 p-0.5"
+                          title="Move down"
+                          disabled={featureRequests[featureRequests.length - 1]?.id === feature.id}
+                        >
+                          <MaterialIcon name="keyboard_arrow_down" className="text-[18px]" />
+                        </button>
+                      </div>
                       <span className="flex-1 text-sm text-gray-700 dark:text-gray-200">{feature.text}</span>
                       <button onClick={() => startEdit(feature.id, feature.text)} className="text-blue-500 hover:text-blue-600 p-1"><MaterialIcon name="edit" className="text-[18px]" /></button>
                       <button onClick={() => deleteFeatureRequest(feature.id)} className="text-red-500 hover:text-red-600 p-1"><MaterialIcon name="delete" className="text-[18px]" /></button>

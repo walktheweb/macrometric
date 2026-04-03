@@ -1,3 +1,7 @@
 .vercel
 devserver.out.log
 devserver.err.log
+node_modules/
+dist/
+.vscode/
+debug.log

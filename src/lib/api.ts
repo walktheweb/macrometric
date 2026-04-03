@@ -810,7 +810,9 @@ export async function getCheckins(userId: string): Promise<Checkin[]> {
     .from('checkins')
     .select('*')
     .eq('user_id', userId)
-    .order('date', { ascending: false });
+    .order('date', { ascending: false })
+    .order('checkin_time', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false });
   
   if (error) {
     console.error('Error fetching checkins:', error);
@@ -820,6 +822,7 @@ export async function getCheckins(userId: string): Promise<Checkin[]> {
   return (data || []).map((c: any) => ({
     id: c.id,
     date: c.date,
+    checkinTime: c.checkin_time,
     weight: c.weight,
     ketones: c.ketones,
     glucose: c.glucose,
@@ -842,28 +845,32 @@ export async function getTodayCheckin(userId: string): Promise<Checkin | null> {
     .select('*')
     .eq('user_id', userId)
     .eq('date', today)
-    .single();
-  
-  if (error || !data) {
+    .order('checkin_time', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  const item = data?.[0];
+
+  if (error || !item) {
     return null;
   }
   
   return {
-    id: data.id,
-    date: data.date,
-    checkinTime: data.checkin_time,
-    weight: data.weight,
-    ketones: data.ketones,
-    glucose: data.glucose,
-    heartRate: data.heart_rate,
-    bpHigh: data.bp_high,
-    bpLow: data.bp_low,
-    steps: data.steps,
-    saturation: data.saturation,
-    cholesterol: data.cholesterol,
-    ferritin: data.ferritin,
-    notes: data.notes,
-    createdAt: data.created_at,
+    id: item.id,
+    date: item.date,
+    checkinTime: item.checkin_time,
+    weight: item.weight,
+    ketones: item.ketones,
+    glucose: item.glucose,
+    heartRate: item.heart_rate,
+    bpHigh: item.bp_high,
+    bpLow: item.bp_low,
+    steps: item.steps,
+    saturation: item.saturation,
+    cholesterol: item.cholesterol,
+    ferritin: item.ferritin,
+    notes: item.notes,
+    createdAt: item.created_at,
   };
 }
 
@@ -1569,16 +1576,17 @@ export async function getFeatureRequests(userId: string): Promise<FeatureRequest
   }));
 }
 
-export async function saveFeatureRequest(userId: string, item: { id?: string; text: string }): Promise<void> {
+export async function saveFeatureRequest(userId: string, item: { id?: string; text: string; createdAt?: number }): Promise<void> {
   const payload = {
     id: item.id || generateId(),
     user_id: userId,
     text: item.text,
-    created_at: Date.now(),
+    created_at: item.createdAt || Date.now(),
   };
   const { error } = await supabase.from('feature_requests').upsert(payload, { onConflict: 'id' });
   if (error) {
     console.error('Error saving feature request:', error);
+    throw new Error(error.message || 'Failed to save feature request');
   }
 }
 
@@ -1591,7 +1599,32 @@ export async function deleteFeatureRequest(userId: string, id: string): Promise<
 
   if (error) {
     console.error('Error deleting feature request:', error);
+    throw new Error(error.message || 'Failed to delete feature request');
   }
+}
+
+export async function reorderFeatureRequests(userId: string, items: FeatureRequestItem[]): Promise<FeatureRequestItem[]> {
+  const base = Date.now() + items.length;
+  const reordered = items.map((item, index) => ({
+    id: item.id,
+    text: item.text,
+    createdAt: base - index,
+  }));
+
+  const rows = reordered.map((item) => ({
+    id: item.id,
+    user_id: userId,
+    text: item.text,
+    created_at: item.createdAt,
+  }));
+
+  const { error } = await supabase.from('feature_requests').upsert(rows, { onConflict: 'id' });
+  if (error) {
+    console.error('Error reordering feature requests:', error);
+    throw new Error(error.message || 'Failed to reorder feature requests');
+  }
+
+  return reordered;
 }
 
 // Data backup

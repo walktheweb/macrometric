@@ -5,6 +5,58 @@ import { getHistory, DayLog, getCheckins, getRaceGoal, RaceGoal, deleteCheckin, 
 import { formatDateDDMMYYYY } from '../lib/date';
 import MaterialIcon from '../components/MaterialIcon';
 
+function formatTimeWithoutSeconds(time?: string) {
+  if (!time) return '';
+  const parts = time.split(':');
+  if (parts.length < 2) return time;
+  return `${parts[0]}:${parts[1]}`;
+}
+
+function getToneClass(tone: 'green' | 'amber' | 'orange' | 'red' | 'critical') {
+  if (tone === 'green') return 'text-green-600 dark:text-green-400';
+  if (tone === 'amber') return 'text-amber-600 dark:text-amber-400';
+  if (tone === 'orange') return 'text-orange-600 dark:text-orange-400';
+  if (tone === 'critical') return 'text-red-700 dark:text-red-300';
+  return 'text-red-600 dark:text-red-400';
+}
+
+function getBpToneClass(sys: number, dia: number) {
+  if (sys > 180 || dia > 120) return getToneClass('critical');
+  if (sys >= 140 || dia >= 90) return getToneClass('red');
+  if ((sys >= 130 && sys <= 139) || (dia >= 80 && dia <= 89)) return getToneClass('orange');
+  if (sys >= 120 && sys <= 129 && dia < 80) return getToneClass('amber');
+  if (sys < 120 && dia < 80) return getToneClass('green');
+  return getToneClass('amber');
+}
+
+function getKetonesToneClass(ketones: number) {
+  if (ketones < 0.5) return getToneClass('red');
+  if (ketones < 1) return getToneClass('amber');
+  if (ketones <= 5) return getToneClass('green');
+  return getToneClass('critical');
+}
+
+function getGlucoseToneClass(glucose: number) {
+  if (glucose < 3.9) return getToneClass('red');
+  if (glucose < 4.4) return getToneClass('amber');
+  if (glucose <= 7.2) return getToneClass('green');
+  if (glucose <= 10) return getToneClass('amber');
+  if (glucose <= 13.9) return getToneClass('red');
+  return getToneClass('critical');
+}
+
+function getHeartRateToneClass(heartRate: number) {
+  if (heartRate < 43) return getToneClass('red');
+  if (heartRate <= 140) return getToneClass('green');
+  return getToneClass('red');
+}
+
+function getFerritinToneClass(ferritin: number) {
+  if (ferritin < 250) return getToneClass('green');
+  if (ferritin <= 400) return getToneClass('orange');
+  return 'text-red-600 dark:text-red-400';
+}
+
 export default function History() {
   const [searchParams] = useSearchParams();
   const { userId, loading: authLoading } = useAuth();
@@ -65,13 +117,15 @@ export default function History() {
   };
 
   const formatDate = (dateStr: string, timeStr?: string) => {
-    let dateText = formatDateDDMMYYYY(dateStr);
+    const cleanTime = formatTimeWithoutSeconds(timeStr);
+    return cleanTime ? `${formatDateDDMMYYYY(dateStr)} - ${cleanTime}` : formatDateDDMMYYYY(dateStr);
+  };
 
-    if (timeStr) {
-      dateText += " - ";
-    }
-
-    return dateText;
+  const formatCreatedAtDate = (createdAt?: number) => {
+    if (!createdAt) return '';
+    const date = new Date(createdAt);
+    if (Number.isNaN(date.getTime())) return '';
+    return formatDateDDMMYYYY(date.toISOString().slice(0, 10));
   };
 
   if (authLoading || loading) {
@@ -102,10 +156,67 @@ export default function History() {
     const eventDate = new Date(`${goal.raceDate}T00:00:00`);
     return eventDate.getTime() <= new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
   });
-  const achievedWeightMilestones = milestones
-    .filter((item) => item.done && (item.notes || '').startsWith('auto:weight'))
+  const achievedMilestones = milestones
+    .filter((item) => item.done)
     .slice()
     .sort((a, b) => b.date.localeCompare(a.date));
+  const weightedAsc = allCheckins
+    .filter((item) => typeof item.weight === 'number' && Number.isFinite(item.weight))
+    .slice()
+    .sort((a, b) => {
+      const byDate = a.date.localeCompare(b.date);
+      if (byDate !== 0) return byDate;
+      return (a.createdAt || 0) - (b.createdAt || 0);
+    });
+  const latestWeight = weightedAsc[weightedAsc.length - 1]?.weight ?? null;
+  const fallbackMilestones: Milestone[] = [];
+  if (allCheckins.length > 0) {
+    const firstCheckin = allCheckins
+      .slice()
+      .sort((a, b) => {
+        const byDate = a.date.localeCompare(b.date);
+        if (byDate !== 0) return byDate;
+        return (a.createdAt || 0) - (b.createdAt || 0);
+      })[0];
+    if (firstCheckin) {
+      fallbackMilestones.push({
+        id: 'derived-first-checkin',
+        title: 'First check-in',
+        date: firstCheckin.date,
+        notes:
+          firstCheckin.notes ||
+          (typeof firstCheckin.weight === 'number' ? `${firstCheckin.weight} kg` : 'Derived from check-ins'),
+        done: true,
+        createdAt: firstCheckin.createdAt || Date.now(),
+      });
+    }
+  }
+  if (weightedAsc.length > 0 && latestWeight !== null) {
+    const firstWeight = weightedAsc[0].weight as number;
+    const maxWeight = weightedAsc.reduce((max, item) => Math.max(max, item.weight as number), Number.NEGATIVE_INFINITY);
+    const minWeight = weightedAsc.reduce((min, item) => Math.min(min, item.weight as number), Number.POSITIVE_INFINITY);
+    const fromThreshold = Math.max(Math.floor(firstWeight), Math.ceil(maxWeight));
+    const toThreshold = Math.floor(minWeight);
+    for (let threshold = fromThreshold; threshold >= toThreshold; threshold -= 1) {
+      const hit = weightedAsc.find((entry) => (entry.weight || Number.POSITIVE_INFINITY) < threshold);
+      if (!hit) continue;
+      fallbackMilestones.push({
+        id: `derived-under-${threshold}`,
+        title: `Under ${threshold} kg`,
+        date: hit.date,
+        notes: 'auto:weight-derived',
+        done: true,
+        createdAt: hit.createdAt || Date.now(),
+      });
+    }
+  }
+  const allMilestones = [...milestones, ...fallbackMilestones.filter((fallback) => !milestones.some((item) => item.title === fallback.title && item.date === fallback.date))]
+    .slice()
+    .sort((a, b) => {
+      const createdDiff = (b.createdAt || 0) - (a.createdAt || 0);
+      if (createdDiff !== 0) return createdDiff;
+      return b.date.localeCompare(a.date);
+    });
 
   return (
     <div className="space-y-4">
@@ -248,19 +359,20 @@ export default function History() {
           ) : (
             <div className="space-y-3">
               {checkins.map(checkin => (
-                <div key={checkin.id} className="bg-purple-50 dark:bg-purple-900/20 rounded-xl shadow-sm overflow-hidden border border-purple-100 dark:border-purple-800">
+                <Link
+                  key={checkin.id}
+                  to={`/?editCheckin=${checkin.id}&from=history`}
+                  className="block bg-purple-50 dark:bg-purple-900/20 rounded-xl shadow-sm overflow-hidden border border-purple-100 dark:border-purple-800"
+                >
                   <div className="px-4 py-3 bg-purple-100 dark:bg-purple-900/50 border-b border-purple-200 dark:border-purple-800 flex justify-between items-center">
                     <div className="font-medium text-purple-800 dark:text-purple-200">{formatDate(checkin.date, checkin.checkinTime)}</div>
                     <div className="flex gap-2">
-                      <Link
-                        to={`/?editCheckin=${checkin.id}&from=history`}
-                        className="p-2 text-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900 rounded-lg"
-                        title="Edit"
-                      >
-                        <MaterialIcon name="edit" className="text-[18px]" />
-                      </Link>
                       <button
+                        type="button"
                         onClick={() => handleDeleteCheckin(checkin.id)}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClickCapture={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
                         className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900 rounded-lg"
                         title="Delete"
                       >
@@ -285,25 +397,25 @@ export default function History() {
                       )}
                       {checkin.ketones && (
                         <div className="text-center">
-                          <div className="text-lg font-bold text-purple-600 dark:text-purple-400">{checkin.ketones}</div>
+                          <div className={`text-lg font-bold ${getKetonesToneClass(checkin.ketones)}`}>{checkin.ketones}</div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">ketones</div>
                         </div>
                       )}
                       {checkin.glucose && (
                         <div className="text-center">
-                          <div className="text-lg font-bold text-orange-600 dark:text-orange-400">{checkin.glucose}</div>
+                          <div className={`text-lg font-bold ${getGlucoseToneClass(checkin.glucose)}`}>{checkin.glucose}</div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">glucose</div>
                         </div>
                       )}
                       {checkin.heartRate && (
                         <div className="text-center">
-                          <div className="text-lg font-bold text-red-600 dark:text-red-400">{checkin.heartRate}</div>
+                          <div className={`text-lg font-bold ${getHeartRateToneClass(checkin.heartRate)}`}>{checkin.heartRate}</div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">HR</div>
                         </div>
                       )}
                       {checkin.bpHigh && checkin.bpLow && (
                         <div className="text-center">
-                          <div className="text-lg font-bold text-gray-900 dark:text-gray-100">{checkin.bpHigh}/{checkin.bpLow}</div>
+                          <div className={`text-lg font-bold ${getBpToneClass(checkin.bpHigh, checkin.bpLow)}`}>{checkin.bpHigh}/{checkin.bpLow}</div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">BP</div>
                         </div>
                       )}
@@ -321,7 +433,7 @@ export default function History() {
                       )}
                       {checkin.ferritin && (
                         <div className="text-center">
-                          <div className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{checkin.ferritin}</div>
+                          <div className={`text-lg font-bold ${getFerritinToneClass(checkin.ferritin)}`}>{checkin.ferritin}</div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">ferr</div>
                         </div>
                       )}
@@ -332,7 +444,7 @@ export default function History() {
                       </div>
                     )}
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           )}
@@ -373,18 +485,33 @@ export default function History() {
       {activeTab === 'milestones' && (
         <div className="space-y-3">
           <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-xl shadow-sm p-4 border border-indigo-100 dark:border-indigo-800">
-            <div className="text-sm font-semibold text-indigo-700 dark:text-indigo-300 mb-3">Achieved Milestones</div>
+            <div className="text-sm font-semibold text-indigo-700 dark:text-indigo-300 mb-3">Milestones</div>
             <div className="space-y-2">
-              {achievedWeightMilestones.map((item) => (
+              {allMilestones.map((item) => (
                 <div key={item.id} className="rounded-lg border border-green-200 dark:border-green-800 bg-white/80 dark:bg-green-950/20 p-3">
                   <div className="flex items-center justify-between gap-2 text-sm">
                     <div className="inline-flex items-center gap-2 text-gray-800 dark:text-gray-100">
-                      <MaterialIcon name="monitor_weight" className="text-[18px] text-green-600 dark:text-green-400" />
+                      <MaterialIcon
+                        name={(item.notes || '').startsWith('auto:weight') ? 'monitor_weight' : 'emoji_events'}
+                        className="text-[18px] text-green-600 dark:text-green-400"
+                      />
                       {item.title}
                     </div>
-                    <span className="text-green-600 dark:text-green-400 font-semibold">Done</span>
+                    <span className={`font-semibold ${item.done ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                      {item.done ? 'Done' : 'Planned'}
+                    </span>
                   </div>
-                  {item.date && <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">{formatDateDDMMYYYY(item.date)}</div>}
+                  <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                    {item.done ? 'Reached' : 'Target'}: {formatDateDDMMYYYY(item.date)}
+                  </div>
+                  {formatCreatedAtDate(item.createdAt) && (
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Added: {formatCreatedAtDate(item.createdAt)}
+                    </div>
+                  )}
+                  {item.notes && !(item.notes || '').startsWith('auto:weight') ? (
+                    <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">{item.notes}</div>
+                  ) : null}
                 </div>
               ))}
 
@@ -416,8 +543,8 @@ export default function History() {
                 </div>
               )}
 
-              {achievedWeightMilestones.length === 0 && achievedEventGoals.length === 0 && !ketoDone && (
-                <div className="text-sm text-gray-500 dark:text-gray-400">No milestones reached yet.</div>
+              {allMilestones.length === 0 && achievedEventGoals.length === 0 && !ketoDone && (
+                <div className="text-sm text-gray-500 dark:text-gray-400">No milestones yet.</div>
               )}
             </div>
           </div>

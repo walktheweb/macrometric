@@ -220,7 +220,7 @@ export default function Layout() {
                 aria-label="Open options"
                 className="flex items-center justify-center p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
               >
-                <MaterialIcon name={moreOpen ? 'close' : 'menu'} className="text-[28px]" />
+                <MaterialIcon name="menu" className="text-[28px]" />
               </button>
               <div
                 className={`absolute right-0 top-0 z-20 w-40 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden transition-all duration-200 ${
@@ -267,7 +267,7 @@ export default function Layout() {
                   }
                 >
                   <MaterialIcon name="directions_bike" className="text-[18px]" />
-                  <span>Cycling</span>
+                  <span>Journey</span>
                 </NavLink>
                 <NavLink
                   to="/settings"

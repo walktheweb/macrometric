@@ -1,12 +1,35 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { getTrips, saveTrip, updateTrip, deleteTrip, Trip } from '../lib/api';
+import {
+  getTrips,
+  saveTrip,
+  updateTrip,
+  deleteTrip,
+  Trip,
+  getCheckins,
+  getRaceGoal,
+  getMilestones,
+  getEventGoals,
+  Checkin,
+  Milestone,
+  EventGoalItem,
+} from '../lib/api';
 import { formatDateDDMMYYYY } from '../lib/date';
 import MaterialIcon from '../components/MaterialIcon';
+
+function formatTimeWithoutSeconds(time?: string) {
+  if (!time) return '';
+  const parts = time.split(':');
+  if (parts.length < 2) return time;
+  return `${parts[0]}:${parts[1]}`;
+}
 
 export default function Trips() {
   const { userId, loading: authLoading } = useAuth();
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [checkins, setCheckins] = useState<Checkin[]>([]);
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [eventGoals, setEventGoals] = useState<EventGoalItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingTripId, setEditingTripId] = useState<string | null>(null);
@@ -26,8 +49,28 @@ export default function Trips() {
   const loadTrips = async () => {
     if (!userId) return;
     setLoading(true);
-    const data = await getTrips(userId);
-    setTrips(data);
+    const [tripData, checkinData, raceGoalData, milestoneData, eventGoalData] = await Promise.all([
+      getTrips(userId),
+      getCheckins(userId),
+      getRaceGoal(userId),
+      getMilestones(userId),
+      getEventGoals(userId),
+    ]);
+    setTrips(tripData);
+    setCheckins(checkinData);
+    setMilestones(milestoneData);
+    setEventGoals([
+      {
+        id: 'primary',
+        eventName: raceGoalData.eventName,
+        raceDate: raceGoalData.raceDate,
+        targetWeight: raceGoalData.targetWeight,
+        weeklyTarget: raceGoalData.weeklyTarget,
+        createdAt: 0,
+        isPrimary: true,
+      },
+      ...eventGoalData.filter((item) => item.id !== 'primary'),
+    ]);
     setLoading(false);
   };
 
@@ -146,6 +189,7 @@ export default function Trips() {
 
   const handleDelete = async (id: string) => {
     if (!userId) return;
+    if (!confirm('Delete this ride?')) return;
     await deleteTrip(userId, id);
     await loadTrips();
   };
@@ -159,6 +203,159 @@ export default function Trips() {
   const formatDate = (dateStr: string) => {
     return formatDateDDMMYYYY(dateStr);
   };
+
+  const formatCreatedAtDate = (createdAt?: number) => {
+    if (!createdAt) return '';
+    const date = new Date(createdAt);
+    if (Number.isNaN(date.getTime())) return '';
+    return formatDateDDMMYYYY(date.toISOString().slice(0, 10));
+  };
+
+  const createdAtToIsoDate = (createdAt?: number) => {
+    if (!createdAt) return '';
+    const date = new Date(createdAt);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toISOString().slice(0, 10);
+  };
+
+  const firstCheckin = useMemo(() => {
+    return checkins
+      .slice()
+      .sort((a, b) => {
+        const byDate = a.date.localeCompare(b.date);
+        if (byDate !== 0) return byDate;
+        return (a.checkinTime || '').localeCompare(b.checkinTime || '');
+      })[0] || null;
+  }, [checkins]);
+
+  const derivedMilestones = useMemo(() => {
+    const result: Milestone[] = [];
+    if (firstCheckin) {
+      result.push({
+        id: 'derived-first-checkin',
+        title: 'First check-in',
+        date: firstCheckin.date,
+        notes:
+          firstCheckin.notes ||
+          (typeof firstCheckin.weight === 'number' ? `${firstCheckin.weight} kg` : 'Derived from check-ins'),
+        done: true,
+        createdAt: firstCheckin.createdAt || Date.now(),
+      });
+    }
+
+    const weightedAsc = checkins
+      .filter((item) => typeof item.weight === 'number' && Number.isFinite(item.weight))
+      .slice()
+      .sort((a, b) => {
+        const byDate = a.date.localeCompare(b.date);
+        if (byDate !== 0) return byDate;
+        return (a.createdAt || 0) - (b.createdAt || 0);
+      });
+
+    if (weightedAsc.length === 0) return result;
+
+    const firstWeight = weightedAsc[0].weight as number;
+    const maxWeight = weightedAsc.reduce((max, item) => Math.max(max, item.weight as number), Number.NEGATIVE_INFINITY);
+    const minWeight = weightedAsc.reduce((min, item) => Math.min(min, item.weight as number), Number.POSITIVE_INFINITY);
+    const fromThreshold = Math.max(Math.floor(firstWeight), Math.ceil(maxWeight));
+    const toThreshold = Math.floor(minWeight);
+
+    for (let threshold = fromThreshold; threshold >= toThreshold; threshold -= 1) {
+      const hit = weightedAsc.find((entry) => (entry.weight || Number.POSITIVE_INFINITY) < threshold);
+      if (!hit) continue;
+      result.push({
+        id: `derived-under-${threshold}`,
+        title: `Under ${threshold} kg`,
+        date: hit.date,
+        notes: 'auto:weight-derived',
+        done: true,
+        createdAt: hit.createdAt || Date.now(),
+      });
+    }
+
+    return result;
+  }, [checkins, firstCheckin]);
+
+  const journeyCheckins = useMemo(
+    () => checkins.filter((checkin) => !!checkin.notes?.trim()).slice(0, 12),
+    [checkins]
+  );
+  const visibleMilestones = useMemo(
+    () => [...milestones, ...derivedMilestones.filter((fallback) => !milestones.some((item) => item.title === fallback.title && item.date === fallback.date))].slice(0, 8),
+    [derivedMilestones, milestones]
+  );
+  const journeyTimeline = useMemo(() => {
+    const todayIso = new Date().toISOString().slice(0, 10);
+
+    const goalItems = eventGoals.map((goal) => ({
+      id: `goal-${goal.id}`,
+      date: goal.raceDate,
+      time: '',
+      createdAt: goal.createdAt || 0,
+      icon: 'flag',
+      title: goal.eventName || 'Goal',
+      subtitle: `${goal.targetWeight} kg | ${goal.weeklyTarget} kg/week`,
+      accent: 'text-blue-600 dark:text-blue-400',
+      titleClass: 'text-gray-900 dark:text-gray-100',
+      badge: goal.isPrimary ? 'Active goal' : 'Goal',
+    }));
+
+    const milestoneItems = [...milestones, ...derivedMilestones.filter((fallback) => !milestones.some((item) => item.title === fallback.title && item.date === fallback.date))]
+      .map((milestone) => ({
+        id: `milestone-${milestone.id}`,
+        date: milestone.done ? milestone.date : (createdAtToIsoDate(milestone.createdAt) || milestone.date),
+        time: '',
+        createdAt: milestone.createdAt || 0,
+        icon: (milestone.notes || '').startsWith('auto:weight') ? 'monitor_weight' : 'emoji_events',
+        title: milestone.title,
+        subtitle: milestone.done
+          ? (milestone.notes && !(milestone.notes || '').startsWith('auto:weight') ? milestone.notes : 'Milestone reached')
+          : `Added${formatCreatedAtDate(milestone.createdAt) ? ` on ${formatCreatedAtDate(milestone.createdAt)}` : ''}`,
+        accent: 'text-amber-600 dark:text-amber-400',
+        titleClass: 'text-amber-700 dark:text-amber-300',
+        badge: milestone.done ? 'Milestone done' : 'Milestone added',
+      }));
+
+    const tripItems = trips.map((trip) => ({
+      id: `trip-${trip.id}`,
+      date: trip.date,
+      time: '',
+      createdAt: trip.createdAt || 0,
+      icon: 'directions_bike',
+      title: `${trip.distance} km ride`,
+      subtitle: `${formatDuration(trip.duration)}${trip.description ? ` | ${trip.description}` : ''}`,
+      accent: 'text-green-600 dark:text-green-400',
+      titleClass: 'text-gray-900 dark:text-gray-100',
+      badge: 'Ride',
+    }));
+
+    const checkinItems = checkins
+      .filter((checkin) => !!checkin.notes?.trim())
+      .map((checkin) => ({
+        id: `checkin-${checkin.id}`,
+        date: checkin.date,
+        time: checkin.checkinTime || '',
+        createdAt: checkin.createdAt || 0,
+        icon: 'monitor_heart',
+        title: `${typeof checkin.weight === 'number' ? `${checkin.weight} kg` : 'Check-in'}${typeof checkin.steps === 'number' ? ` | ${checkin.steps} steps` : ''}`,
+        subtitle: checkin.notes || '',
+        accent: 'text-purple-600 dark:text-purple-400',
+        titleClass: 'text-gray-900 dark:text-gray-100',
+        badge: firstCheckin?.id === checkin.id ? 'First check-in' : 'Check-in',
+      }));
+
+    return [...checkinItems, ...milestoneItems, ...tripItems, ...goalItems]
+      .filter((item) => item.date <= todayIso)
+      .sort((a, b) => {
+        const dateCompare = b.date.localeCompare(a.date);
+        if (dateCompare !== 0) return dateCompare;
+        const timeCompare = (b.time || '').localeCompare(a.time || '');
+        if (timeCompare !== 0) return timeCompare;
+        return (b.createdAt || 0) - (a.createdAt || 0);
+      })
+      .filter((item) => !!item.date)
+      .slice(0, 20);
+  }, [checkins, derivedMilestones, eventGoals, firstCheckin, milestones, trips]);
 
   if (authLoading || loading) {
     return (
@@ -179,9 +376,9 @@ export default function Trips() {
   return (
     <div className="space-y-4">
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <div>
-            <div className="text-sm text-gray-500 dark:text-gray-400">{currentWeekNumber}</div>
+            <div className="text-sm text-gray-500 dark:text-gray-400">Journey week {currentWeekNumber}</div>
             <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
               {weekStats.count} rides | {weekStats.totalDistance.toFixed(0)} km | {formatDuration(weekStats.totalDuration)}
             </div>
@@ -197,6 +394,121 @@ export default function Trips() {
             + Log Ride
           </button>
         </div>
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <MaterialIcon name="timeline" className="text-[22px] text-indigo-600 dark:text-indigo-400" />
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Journey Timeline</h2>
+        </div>
+        {journeyTimeline.length > 0 ? (
+          <div className="space-y-2">
+            {journeyTimeline.map((item) => (
+              <div key={item.id} className="rounded-xl bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <MaterialIcon name={item.icon} className={`text-[20px] mt-0.5 ${item.accent}`} />
+                    <div className="min-w-0">
+                      <div className={`font-medium ${item.titleClass}`}>{item.title}</div>
+                      {item.subtitle ? (
+                        <div className="text-sm text-gray-600 dark:text-gray-300 truncate">{item.subtitle}</div>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-sm text-gray-700 dark:text-gray-200">
+                      {formatDate(item.date)}{item.time ? ` - ${formatTimeWithoutSeconds(item.time)}` : ''}
+                    </div>
+                    <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">{item.badge}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-sm text-gray-500 dark:text-gray-400">No journey items yet.</div>
+        )}
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <MaterialIcon name="flag" className="text-[22px] text-blue-600 dark:text-blue-400" />
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Goals</h3>
+        </div>
+        <div className="space-y-3">
+          {eventGoals.map((goal) => (
+            <div key={goal.id} className="rounded-xl border border-blue-100 dark:border-blue-900 bg-blue-50/70 dark:bg-blue-900/20 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-medium text-gray-900 dark:text-gray-100">{goal.eventName || 'Goal'}</div>
+                {goal.isPrimary && <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">Active</span>}
+              </div>
+              <div className="text-sm text-gray-600 dark:text-gray-300">
+                {formatDate(goal.raceDate)} | {goal.targetWeight} kg | {goal.weeklyTarget} kg/week
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <MaterialIcon name="emoji_events" className="text-[22px] text-amber-500 dark:text-amber-400" />
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Milestones</h3>
+        </div>
+        {visibleMilestones.length === 0 ? (
+          <div className="text-sm text-gray-500 dark:text-gray-400">No milestones yet.</div>
+        ) : (
+          <div className="space-y-2">
+            {visibleMilestones.map((milestone) => (
+              <div key={milestone.id} className="rounded-xl border border-amber-100 dark:border-amber-900 bg-amber-50/70 dark:bg-amber-900/20 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-medium text-gray-900 dark:text-gray-100">{milestone.title}</div>
+                  <span className={`text-xs font-semibold ${milestone.done ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                    {milestone.done ? 'Done' : 'Planned'}
+                  </span>
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-300">
+                  {milestone.done ? `Reached: ${formatDate(milestone.date)}` : `Target: ${formatDate(milestone.date)}`}
+                  {milestone.notes && !(milestone.notes || '').startsWith('auto:weight') ? ` | ${milestone.notes}` : ''}
+                </div>
+                {formatCreatedAtDate(milestone.createdAt) && (
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Added: {formatCreatedAtDate(milestone.createdAt)}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <MaterialIcon name="monitor_heart" className="text-[22px] text-purple-600 dark:text-purple-400" />
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Check-ins</h3>
+        </div>
+        {journeyCheckins.length === 0 ? (
+          <div className="text-sm text-gray-500 dark:text-gray-400">No check-ins yet.</div>
+        ) : (
+          <div className="space-y-2">
+            {journeyCheckins.map((checkin) => (
+              <div key={checkin.id} className="rounded-xl border border-purple-100 dark:border-purple-900 bg-purple-50/70 dark:bg-purple-900/20 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-medium text-gray-900 dark:text-gray-100">
+                    {formatDate(checkin.date)}
+                    {checkin.checkinTime ? ` - ${formatTimeWithoutSeconds(checkin.checkinTime)}` : ''}
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-300">
+                    {typeof checkin.weight === 'number' ? `${checkin.weight} kg` : typeof checkin.steps === 'number' ? `${checkin.steps} steps` : 'Check-in'}
+                  </div>
+                </div>
+                {checkin.notes && (
+                  <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">{checkin.notes}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {showForm && (
