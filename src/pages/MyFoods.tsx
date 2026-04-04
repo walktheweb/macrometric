@@ -125,7 +125,7 @@ export default function MyFoods() {
       window.removeEventListener('macrometric:header-action', handleHeaderAction as EventListener);
       window.dispatchEvent(new CustomEvent('macrometric:header-context', { detail: null }));
     };
-  }, [showForm, editingFood, formData, userId]);
+  }, [showForm, editingFood, formData, userId, logWeightInput, targetLogId, logDate]);
 
   useEffect(() => {
     const logDateParam = searchParams.get('logDate');
