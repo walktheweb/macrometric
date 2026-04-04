@@ -147,6 +147,13 @@ function formatCheckinTime(time?: string | null) {
   return `${parts[0]}:${parts[1]}`;
 }
 
+function isSameClockTime(time?: string | null, target?: string | null) {
+  return formatCheckinTime(time) === formatCheckinTime(target);
+}
+
+const DEFAULT_FAST_START_TIME = '20:00';
+const DEFAULT_FIRST_MEAL_TIME = '12:00';
+
 function getFastingHours(fastStartTime?: string | null, firstMealTime?: string | null) {
   if (!fastStartTime || !firstMealTime) return null;
   const [startHour, startMinute] = fastStartTime.split(':').map(Number);
@@ -158,6 +165,24 @@ function getFastingHours(fastStartTime?: string | null, firstMealTime?: string |
     mealTotal += 24 * 60;
   }
   return Math.round(((mealTotal - startTotal) / 60) * 10) / 10;
+}
+
+function getElapsedFastingHours(fastStartTime?: string | null, now = new Date()) {
+  if (!fastStartTime) return 0;
+  const [startHour, startMinute] = fastStartTime.split(':').map(Number);
+  if ([startHour, startMinute].some((value) => !Number.isFinite(value))) return 0;
+  const startTotal = startHour * 60 + startMinute;
+  let currentTotal = now.getHours() * 60 + now.getMinutes();
+  if (currentTotal < startTotal) {
+    currentTotal += 24 * 60;
+  }
+  return Math.max(0, Math.round(((currentTotal - startTotal) / 60) * 10) / 10);
+}
+
+function getFastingProgressPercent(targetHours: number, fastStartTime?: string | null, firstMealTime?: string | null) {
+  const actualHours = getFastingHours(fastStartTime, firstMealTime);
+  const elapsedHours = actualHours ?? getElapsedFastingHours(fastStartTime);
+  return Math.max(0, Math.min(100, Math.round((elapsedHours / targetHours) * 100)));
 }
 
 function ExplodedPieIcon() {
@@ -212,6 +237,8 @@ export default function Dashboard() {
   const [weeksUntil, setWeeksUntil] = useState(8);
   const [stepGoal, setStepGoal] = useState(10000);
   const [lastWeightCheckin, setLastWeightCheckin] = useState<Checkin | null>(null);
+  const [fastingTargetHours, setFastingTargetHours] = useState(16);
+  const [isFastingCollapsed, setIsFastingCollapsed] = useState(true);
   
   const getCurrentTimeString = () => {
     const now = new Date();
@@ -224,8 +251,8 @@ export default function Dashboard() {
     date: getToday(),
     checkinTime: getCurrentTimeString(),
     weight: '',
-    fastStartTime: '',
-    firstMealTime: '',
+    fastStartTime: DEFAULT_FAST_START_TIME,
+    firstMealTime: DEFAULT_FIRST_MEAL_TIME,
     steps: '',
     ketones: '',
     glucose: '',
@@ -246,8 +273,8 @@ export default function Dashboard() {
     date: item.date,
     checkinTime: item.checkinTime || getCurrentTimeString(),
     weight: item.weight?.toString() || '',
-    fastStartTime: item.fastStartTime || '',
-    firstMealTime: item.firstMealTime || '',
+    fastStartTime: item.fastStartTime || DEFAULT_FAST_START_TIME,
+    firstMealTime: item.firstMealTime || DEFAULT_FIRST_MEAL_TIME,
     steps: item.steps?.toString() || '',
     ketones: item.ketones?.toString() || '',
     glucose: item.glucose?.toString() || '',
@@ -289,6 +316,20 @@ export default function Dashboard() {
       loadData();
     }
   }, [userId]);
+
+  useEffect(() => {
+    const storedTarget = localStorage.getItem('macrometric_fasting_target_hours');
+    if (!storedTarget) return;
+    const parsed = Number(storedTarget);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      setFastingTargetHours(parsed);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('macrometric_fasting_target_hours', String(fastingTargetHours));
+  }, [fastingTargetHours]);
+
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -420,6 +461,17 @@ export default function Dashboard() {
     clearOpenCheckinParam();
   }, [openCheckinParam]);
 
+  useEffect(() => {
+    const latestTodayCheckin = todayCheckins[todayCheckins.length - 1] || null;
+    const isResetState =
+      isSameClockTime(latestTodayCheckin?.fastStartTime, DEFAULT_FAST_START_TIME) &&
+      isSameClockTime(latestTodayCheckin?.firstMealTime, DEFAULT_FIRST_MEAL_TIME);
+    const hasActiveFastNow = !!latestTodayCheckin?.fastStartTime && !latestTodayCheckin?.firstMealTime && !isResetState;
+    if (hasActiveFastNow) {
+      setIsFastingCollapsed(false);
+    }
+  }, [todayCheckins]);
+
   const loadData = async () => {
     if (!userId) return;
     
@@ -469,6 +521,8 @@ export default function Dashboard() {
         date: getToday(),
         checkinTime: getCurrentTimeString(),
         weight: '',
+        fastStartTime: DEFAULT_FAST_START_TIME,
+        firstMealTime: DEFAULT_FIRST_MEAL_TIME,
         steps: '',
         ketones: '',
         glucose: '',
@@ -616,6 +670,57 @@ export default function Dashboard() {
     window.dispatchEvent(new CustomEvent('macrometric:checkin-updated', { detail: { hasTodayCheckin: false } }));
   };
 
+  const handleFastingStamp = async (field: 'fastStartTime' | 'firstMealTime') => {
+    if (!userId) return;
+    setIsFastingCollapsed(false);
+    const stampedTime = getCurrentTimeString();
+    const source = todayCheckin;
+    const startsNewFast = field === 'fastStartTime' && !!source?.fastStartTime && !!source?.firstMealTime;
+    const savedCheckin = await saveCheckin(userId, {
+      id: source?.id,
+      date: getToday(),
+      checkinTime: source?.checkinTime || stampedTime,
+      weight: source?.weight,
+      fastStartTime: field === 'fastStartTime' ? stampedTime : source?.fastStartTime,
+      firstMealTime: field === 'firstMealTime' ? stampedTime : startsNewFast ? null : source?.firstMealTime,
+      steps: source?.steps,
+      ketones: source?.ketones,
+      glucose: source?.glucose,
+      heartRate: source?.heartRate,
+      bpHigh: source?.bpHigh,
+      bpLow: source?.bpLow,
+      saturation: source?.saturation,
+      cholesterol: source?.cholesterol,
+      ferritin: source?.ferritin,
+      notes: source?.notes,
+    });
+
+    setTodayCheckins((current) => {
+      const next = current.filter((item) => item.id !== savedCheckin.id);
+      next.push(savedCheckin);
+      return next.sort((a, b) => {
+        const timeA = a.checkinTime || '';
+        const timeB = b.checkinTime || '';
+        if (timeA !== timeB) return timeA.localeCompare(timeB);
+        return a.createdAt - b.createdAt;
+      });
+    });
+    setCheckins((current) => {
+      const next = current.filter((item) => item.id !== savedCheckin.id);
+      next.unshift(savedCheckin);
+      return next.sort((a, b) => {
+        const dateCompare = b.date.localeCompare(a.date);
+        if (dateCompare !== 0) return dateCompare;
+        const timeCompare = (b.checkinTime || '').localeCompare(a.checkinTime || '');
+        if (timeCompare !== 0) return timeCompare;
+        return b.createdAt - a.createdAt;
+      });
+    });
+
+    await loadData();
+    window.dispatchEvent(new CustomEvent('macrometric:checkin-updated', { detail: { hasTodayCheckin: true } }));
+  };
+
   if (authLoading || loading) {
     return (
       <div className="flex justify-center py-12">
@@ -701,6 +806,32 @@ export default function Dashboard() {
   // Get today's steps (aggregate from all check-ins today)
   const todaySteps = todayCheckins.reduce((sum, c) => sum + (c.steps || 0), 0);
   const todayCheckin = todayCheckins[todayCheckins.length - 1] || null;
+  const isResetFastingState =
+    isSameClockTime(todayCheckin?.fastStartTime, DEFAULT_FAST_START_TIME) &&
+    isSameClockTime(todayCheckin?.firstMealTime, DEFAULT_FIRST_MEAL_TIME);
+  const todayFastingHours = getFastingHours(todayCheckin?.fastStartTime, todayCheckin?.firstMealTime);
+  const displayedFastStartTime = todayCheckin?.fastStartTime || DEFAULT_FAST_START_TIME;
+  const displayedFirstMealTime = todayCheckin?.firstMealTime || DEFAULT_FIRST_MEAL_TIME;
+  const fastingProgressPercent = isResetFastingState
+    ? 0
+    : getFastingProgressPercent(fastingTargetHours, todayCheckin?.fastStartTime, todayCheckin?.firstMealTime);
+  const fastingProgressHours = isResetFastingState
+    ? 0
+    : (todayFastingHours ?? getElapsedFastingHours(todayCheckin?.fastStartTime));
+  const fastingSuccess = !isResetFastingState && todayFastingHours !== null && todayFastingHours >= fastingTargetHours;
+  const fastingCompleted = !isResetFastingState && todayFastingHours !== null;
+  const fastingTooShort = fastingCompleted && !fastingSuccess;
+  const showStopEatingButton = fastingCompleted || isResetFastingState || !todayCheckin?.fastStartTime;
+  const showStartEatingButton = fastingCompleted || isResetFastingState || !todayCheckin?.firstMealTime;
+  const canEditFastingTarget = showStopEatingButton && showStartEatingButton;
+  const hasActiveFast = !!todayCheckin?.fastStartTime && !todayCheckin?.firstMealTime && !isResetFastingState;
+  const isFastingExpanded = hasActiveFast || !isFastingCollapsed;
+  const fastingNotStarted = !hasActiveFast && !fastingCompleted;
+  const fastingHelpText = showStopEatingButton
+    ? 'Press button to start fasting'
+    : showStartEatingButton
+      ? 'Press button to end fasting'
+      : '';
   const previousWeightCheckin = checkins.find((item) => item.id !== todayCheckin?.id && typeof item.weight === 'number' && Number.isFinite(item.weight));
   const todayWeight = typeof todayCheckin?.weight === 'number' && Number.isFinite(todayCheckin.weight) ? todayCheckin.weight : null;
   const previousWeight = previousWeightCheckin?.weight ?? null;
@@ -1088,9 +1219,6 @@ export default function Dashboard() {
             {typeof todayCheckin?.steps === 'number' && (
               <div className="text-center"><span className={`font-semibold ${getStepsTone(todayCheckin.steps)}`}>{todayCheckin.steps}</span> steps</div>
             )}
-            {getFastingHours(todayCheckin?.fastStartTime, todayCheckin?.firstMealTime) !== null && (
-              <div className="text-center"><span className="font-semibold text-indigo-600 dark:text-indigo-400">{getFastingHours(todayCheckin?.fastStartTime, todayCheckin?.firstMealTime)}</span> fast h</div>
-            )}
             {typeof todayCheckin?.ketones === 'number' && <div className="text-center"><span className={`font-semibold ${getKetonesTone(todayCheckin.ketones)}`}>{todayCheckin.ketones}</span> ketones</div>}
             {typeof todayCheckin?.glucose === 'number' && <div className="text-center"><span className={`font-semibold ${getGlucoseMmolTone(todayCheckin.glucose)}`}>{todayCheckin.glucose}</span> glucose</div>}
             {typeof todayCheckin?.heartRate === 'number' && <div className="text-center"><span className={`font-semibold ${getHeartRateTone(todayCheckin.heartRate)}`}>{todayCheckin.heartRate}</span> HR</div>}
@@ -1149,6 +1277,129 @@ export default function Dashboard() {
           <span className="text-gray-600 dark:text-gray-400">@ 6 km/h</span>
         </div>
       </button>
+
+      {/* Fasting Card */}
+      <div
+        className="relative w-full text-left bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl shadow-sm p-5 border border-indigo-100 dark:border-indigo-800 overflow-hidden"
+      >
+        <button
+          type="button"
+          onClick={() => {
+            if (hasActiveFast) return;
+            setIsFastingCollapsed((current) => !current);
+          }}
+          className={`flex w-full items-center justify-between gap-3 text-left ${hasActiveFast ? 'cursor-default' : 'cursor-pointer'}`}
+        >
+          <span className="text-lg font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-2 whitespace-nowrap">
+            <MaterialIcon name="schedule" className="text-[20px] text-indigo-600 dark:text-indigo-400" />
+            Fasting
+            {!fastingSuccess && !fastingTooShort && fastingHelpText && (
+              <span className="text-sm font-normal text-gray-500 dark:text-gray-400">
+                {fastingHelpText}
+              </span>
+            )}
+          </span>
+          <span className="inline-flex items-center gap-2">
+            {fastingNotStarted ? (
+              <span className="text-sm font-semibold text-red-600 dark:text-red-400 whitespace-nowrap">Not started</span>
+            ) : todayFastingHours !== null ? (
+              <span className="text-base font-semibold text-indigo-600 dark:text-indigo-400 whitespace-nowrap">
+                {todayFastingHours} h
+              </span>
+            ) : (
+              <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">In Progress</span>
+            )}
+            <MaterialIcon
+              name={isFastingExpanded ? 'expand_less' : 'expand_more'}
+              className="text-[20px] text-indigo-600 dark:text-indigo-400"
+            />
+          </span>
+        </button>
+        {isFastingExpanded && (
+          <>
+        <div className="mb-3 mt-3">
+          <div className="flex items-center justify-between gap-3 text-xs text-gray-600 dark:text-gray-400 mb-1">
+            <span>Progress</span>
+            <span>{Math.min(fastingProgressHours, fastingTargetHours).toFixed(1)} / {fastingTargetHours} h</span>
+          </div>
+          <div className="h-3 bg-indigo-200 dark:bg-indigo-950/70 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-indigo-500 transition-all duration-500 rounded-full"
+              style={{ width: `${fastingProgressPercent}%` }}
+            />
+          </div>
+        </div>
+        {canEditFastingTarget && (
+          <div className="mb-3 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+            <span className="text-gray-600 dark:text-gray-400 whitespace-nowrap">Target hours</span>
+            <input
+              type="number"
+              min="1"
+              max="48"
+              step="0.5"
+              value={fastingTargetHours}
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) => {
+                const nextValue = Number(event.target.value);
+                if (Number.isFinite(nextValue) && nextValue > 0) {
+                  setFastingTargetHours(nextValue);
+                }
+              }}
+              className="w-20 rounded-lg border border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm font-semibold text-indigo-700 dark:text-indigo-300"
+            />
+            <span className="text-gray-600 dark:text-gray-400">h</span>
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          {showStopEatingButton ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                handleFastingStamp('fastStartTime');
+              }}
+              className="rounded-xl px-3 py-2 text-sm font-semibold transition-colors bg-indigo-600 hover:bg-indigo-700 text-white"
+            >
+              Stop eating {formatCheckinTime(displayedFastStartTime)}
+            </button>
+          ) : (
+            <div className="rounded-xl px-3 py-2 text-sm font-semibold bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-center">
+              Fast started {formatCheckinTime(todayCheckin?.fastStartTime)}
+            </div>
+          )}
+          {showStartEatingButton ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                handleFastingStamp('firstMealTime');
+              }}
+              className="rounded-xl px-3 py-2 text-sm font-semibold transition-colors bg-white dark:bg-gray-800 border border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100/70 dark:hover:bg-indigo-900/40"
+            >
+              Start eating {formatCheckinTime(displayedFirstMealTime)}
+            </button>
+          ) : (
+            <div className="rounded-xl px-3 py-2 text-sm font-semibold bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-center">
+              First meal {formatCheckinTime(todayCheckin?.firstMealTime)}
+            </div>
+          )}
+        </div>
+        {(fastingSuccess || fastingTooShort) && (
+          <div className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+            {fastingSuccess ? (
+              <span className="font-semibold text-green-600 dark:text-green-400">
+                Fast completed
+              </span>
+            ) : (
+              <span className="font-bold text-red-600 dark:text-red-400">
+                Fast to short
+              </span>
+            )}
+          </div>
+        )}
+          </>
+        )}
+      </div>
 
       {/* BMI Card - from last known weight */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5">

@@ -159,6 +159,22 @@ export default function Layout() {
                 <span className="text-white font-bold text-sm">M</span>
               </div>
             </button>
+            {navItems.map(({ to, label, icon }) => (
+              <NavLink
+                key={to}
+                to={to}
+                title={label}
+                className={({ isActive }) =>
+                  `flex items-center justify-center p-2 rounded-lg transition-colors ${
+                    isActive
+                      ? 'text-primary-600 bg-primary-50'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`
+                }
+              >
+                <MaterialIcon name={icon} className="text-[28px]" />
+              </NavLink>
+            ))}
             {headerContext?.buttons?.length ? (
               <div className="flex items-center gap-2 ml-1">
                 {headerContext.buttons.map((button) => (
@@ -176,24 +192,7 @@ export default function Layout() {
                   </button>
                 ))}
               </div>
-            ) : (
-              navItems.map(({ to, label, icon }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  title={label}
-                  className={({ isActive }) =>
-                    `flex items-center justify-center p-2 rounded-lg transition-colors ${
-                      isActive
-                        ? 'text-primary-600 bg-primary-50'
-                        : 'text-gray-600 hover:bg-gray-100'
-                    }`
-                  }
-                >
-                  <MaterialIcon name={icon} className="text-[28px]" />
-                </NavLink>
-              ))
-            )}
+            ) : null}
           </div>
           <div className="flex items-center gap-2">
             <div

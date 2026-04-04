@@ -80,8 +80,8 @@ export default function History() {
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(7);
   const initialTab = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState<'food' | 'checkin' | 'goals' | 'milestones'>(
-    initialTab === 'checkin' || initialTab === 'goals' || initialTab === 'milestones' ? initialTab : 'food'
+  const [activeTab, setActiveTab] = useState<'food' | 'checkin' | 'fasting' | 'goals' | 'milestones'>(
+    initialTab === 'checkin' || initialTab === 'fasting' || initialTab === 'goals' || initialTab === 'milestones' ? initialTab : 'food'
   );
   const [expandedFoodDates, setExpandedFoodDates] = useState<Set<string>>(new Set());
 
@@ -228,6 +228,16 @@ export default function History() {
       if (createdDiff !== 0) return createdDiff;
       return b.date.localeCompare(a.date);
     });
+  const fastingEntries = allCheckins
+    .filter((item) => item.fastStartTime || item.firstMealTime)
+    .slice()
+    .sort((a, b) => {
+      const byDate = b.date.localeCompare(a.date);
+      if (byDate !== 0) return byDate;
+      const byTime = (b.checkinTime || '').localeCompare(a.checkinTime || '');
+      if (byTime !== 0) return byTime;
+      return (b.createdAt || 0) - (a.createdAt || 0);
+    });
 
   return (
     <div className="space-y-4">
@@ -268,6 +278,14 @@ export default function History() {
           }`}
         >
           Goals
+        </button>
+        <button
+          onClick={() => setActiveTab('fasting')}
+          className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
+            activeTab === 'fasting' ? 'bg-white dark:bg-gray-600 shadow text-primary-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300'
+          }`}
+        >
+          Fasting
         </button>
         <button
           onClick={() => setActiveTab('milestones')}
@@ -497,6 +515,81 @@ export default function History() {
             </div>
           </div>
         </div>
+      )}
+
+      {activeTab === 'fasting' && (
+        <>
+          {fastingEntries.length === 0 ? (
+            <div className="text-center py-12 text-gray-400 dark:text-gray-500">
+              No fasting history yet.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {fastingEntries.map((entry) => {
+                const fastingHours = getFastingHours(entry.fastStartTime, entry.firstMealTime);
+                const isCompleted = fastingHours !== null;
+                const isSuccessful = (fastingHours || 0) >= 16;
+                return (
+                  <div
+                    key={`fasting-${entry.id}`}
+                    className="bg-indigo-50 dark:bg-indigo-900/20 rounded-xl shadow-sm overflow-hidden border border-indigo-100 dark:border-indigo-800"
+                  >
+                    <div className="px-4 py-3 bg-indigo-100 dark:bg-indigo-900/50 border-b border-indigo-200 dark:border-indigo-800 flex items-center justify-between gap-3">
+                      <div className="font-medium text-indigo-800 dark:text-indigo-200">
+                        {formatDate(entry.date, entry.checkinTime)}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {isCompleted ? (
+                          <span className={`text-sm font-semibold ${isSuccessful ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
+                            {isSuccessful ? 'Fast completed' : 'Fast to short'}
+                          </span>
+                        ) : (
+                          <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-300">In progress</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCheckin(entry.id)}
+                          className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900 rounded-lg"
+                          title="Delete"
+                          aria-label="Delete fasting entry"
+                        >
+                          <MaterialIcon name="delete" className="text-[18px]" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="p-4">
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="text-center">
+                          <div className="text-lg font-bold text-indigo-600 dark:text-indigo-400">
+                            {formatTimeWithoutSeconds(entry.fastStartTime) || '--:--'}
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">Fast start</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-lg font-bold text-indigo-600 dark:text-indigo-400">
+                            {formatTimeWithoutSeconds(entry.firstMealTime) || '--:--'}
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">First meal</div>
+                        </div>
+                        <div className="text-center">
+                          <div className={`text-lg font-bold ${isCompleted ? (isSuccessful ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400') : 'text-gray-900 dark:text-gray-100'}`}>
+                            {fastingHours !== null ? `${fastingHours} h` : '--'}
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">Duration</div>
+                        </div>
+                      </div>
+                      {entry.notes && (
+                        <div className="mt-3 pt-3 border-t border-indigo-100 dark:border-indigo-800 text-sm text-gray-600 dark:text-gray-300">
+                          {entry.notes}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
       {activeTab === 'milestones' && (

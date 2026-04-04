@@ -922,8 +922,8 @@ export async function saveCheckin(userId: string, data: {
   date: string;
   checkinTime?: string;
   weight?: number;
-  fastStartTime?: string;
-  firstMealTime?: string;
+  fastStartTime?: string | null;
+  firstMealTime?: string | null;
   ketones?: number;
   glucose?: number;
   heartRate?: number;
