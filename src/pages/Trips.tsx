@@ -10,6 +10,7 @@ import {
   getRaceGoal,
   getMilestones,
   getEventGoals,
+  getStepGoal,
   Checkin,
   Milestone,
   EventGoalItem,
@@ -24,12 +25,26 @@ function formatTimeWithoutSeconds(time?: string) {
   return `${parts[0]}:${parts[1]}`;
 }
 
+function getFastingHours(fastStartTime?: string | null, firstMealTime?: string | null) {
+  if (!fastStartTime || !firstMealTime) return null;
+  const [startHour, startMinute] = fastStartTime.split(':').map(Number);
+  const [mealHour, mealMinute] = firstMealTime.split(':').map(Number);
+  if ([startHour, startMinute, mealHour, mealMinute].some((value) => !Number.isFinite(value))) return null;
+  let startTotal = startHour * 60 + startMinute;
+  let mealTotal = mealHour * 60 + mealMinute;
+  if (mealTotal <= startTotal) mealTotal += 24 * 60;
+  return Math.round(((mealTotal - startTotal) / 60) * 10) / 10;
+}
+
+const DEFAULT_FASTING_TARGET_HOURS = 16;
+
 export default function Trips() {
   const { userId, loading: authLoading } = useAuth();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [checkins, setCheckins] = useState<Checkin[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [eventGoals, setEventGoals] = useState<EventGoalItem[]>([]);
+  const [stepGoal, setStepGoal] = useState(10000);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingTripId, setEditingTripId] = useState<string | null>(null);
@@ -49,16 +64,18 @@ export default function Trips() {
   const loadTrips = async () => {
     if (!userId) return;
     setLoading(true);
-    const [tripData, checkinData, raceGoalData, milestoneData, eventGoalData] = await Promise.all([
+    const [tripData, checkinData, raceGoalData, milestoneData, eventGoalData, stepGoalData] = await Promise.all([
       getTrips(userId),
       getCheckins(userId),
       getRaceGoal(userId),
       getMilestones(userId),
       getEventGoals(userId),
+      getStepGoal(userId),
     ]);
     setTrips(tripData);
     setCheckins(checkinData);
     setMilestones(milestoneData);
+    setStepGoal(stepGoalData);
     setEventGoals([
       {
         id: 'primary',
@@ -344,7 +361,71 @@ export default function Trips() {
         badge: firstCheckin?.id === checkin.id ? 'First check-in' : 'Check-in',
       }));
 
-    return [...checkinItems, ...milestoneItems, ...tripItems, ...goalItems]
+    const successfulFastItems = checkins
+      .map((checkin) => {
+        const fastingHours = getFastingHours(checkin.fastStartTime, checkin.firstMealTime);
+        if (fastingHours === null || fastingHours < DEFAULT_FASTING_TARGET_HOURS) return null;
+        return {
+          id: `fast-${checkin.id}`,
+          date: checkin.date,
+          time: checkin.firstMealTime || checkin.checkinTime || '',
+          createdAt: checkin.createdAt || 0,
+          icon: 'timer',
+          title: `Successful fast | ${fastingHours} h`,
+          subtitle: `${formatTimeWithoutSeconds(checkin.fastStartTime)} - ${formatTimeWithoutSeconds(checkin.firstMealTime)}`,
+          accent: 'text-green-600 dark:text-green-400',
+          titleClass: 'text-gray-900 dark:text-gray-100',
+          badge: 'Fast completed',
+        };
+      })
+      .filter(Boolean) as Array<{
+        id: string;
+        date: string;
+        time: string;
+        createdAt: number;
+        icon: string;
+        title: string;
+        subtitle: string;
+        accent: string;
+        titleClass: string;
+        badge: string;
+      }>;
+
+    const dailyStepGoalItems = Object.values(
+      checkins.reduce<Record<string, { date: string; steps: number; createdAt: number; time: string }>>((acc, checkin) => {
+        const steps = Number(checkin.steps) || 0;
+        if (steps <= 0) return acc;
+        const existing = acc[checkin.date];
+        if (!existing) {
+          acc[checkin.date] = {
+            date: checkin.date,
+            steps,
+            createdAt: checkin.createdAt || 0,
+            time: checkin.checkinTime || '',
+          };
+          return acc;
+        }
+        existing.steps += steps;
+        if ((checkin.checkinTime || '') > existing.time) existing.time = checkin.checkinTime || existing.time;
+        if ((checkin.createdAt || 0) > existing.createdAt) existing.createdAt = checkin.createdAt || existing.createdAt;
+        return acc;
+      }, {})
+    )
+      .filter((entry) => entry.steps >= stepGoal)
+      .map((entry) => ({
+        id: `steps-goal-${entry.date}`,
+        date: entry.date,
+        time: entry.time,
+        createdAt: entry.createdAt,
+        icon: 'directions_walk',
+        title: `Step goal reached | ${entry.steps} steps`,
+        subtitle: `Goal ${stepGoal} steps`,
+        accent: 'text-green-600 dark:text-green-400',
+        titleClass: 'text-gray-900 dark:text-gray-100',
+        badge: 'Step goal',
+      }));
+
+    return [...checkinItems, ...successfulFastItems, ...dailyStepGoalItems, ...milestoneItems, ...tripItems, ...goalItems]
       .filter((item) => item.date <= todayIso)
       .sort((a, b) => {
         const dateCompare = b.date.localeCompare(a.date);
@@ -355,7 +436,7 @@ export default function Trips() {
       })
       .filter((item) => !!item.date)
       .slice(0, 20);
-  }, [checkins, derivedMilestones, eventGoals, firstCheckin, milestones, trips]);
+  }, [checkins, derivedMilestones, eventGoals, firstCheckin, milestones, stepGoal, trips]);
 
   if (authLoading || loading) {
     return (

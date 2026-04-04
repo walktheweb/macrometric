@@ -185,6 +185,36 @@ function getFastingProgressPercent(targetHours: number, fastStartTime?: string |
   return Math.max(0, Math.min(100, Math.round((elapsedHours / targetHours) * 100)));
 }
 
+function getProjectedFirstMealTime(fastStartTime?: string | null, targetHours = 16) {
+  if (!fastStartTime) return DEFAULT_FIRST_MEAL_TIME;
+  const [startHour, startMinute] = fastStartTime.split(':').map(Number);
+  if ([startHour, startMinute].some((value) => !Number.isFinite(value))) return DEFAULT_FIRST_MEAL_TIME;
+  const totalMinutes = startHour * 60 + startMinute + Math.round(targetHours * 60);
+  const normalizedMinutes = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+  const hour = Math.floor(normalizedMinutes / 60);
+  const minute = normalizedMinutes % 60;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function formatRemainingHours(hours: number) {
+  const totalMinutes = Math.max(0, Math.round(hours * 60));
+  const remainingHours = Math.floor(totalMinutes / 60);
+  const remainingMinutes = totalMinutes % 60;
+  if (remainingHours > 0 && remainingMinutes > 0) return `${remainingHours}h ${remainingMinutes}m`;
+  if (remainingHours > 0) return `${remainingHours}h`;
+  return `${remainingMinutes}m`;
+}
+
+function getLatestDefinedValue<T>(items: Checkin[], picker: (item: Checkin) => T | undefined) {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const value = picker(items[index]);
+    if (value !== undefined && value !== null && value !== '') {
+      return value;
+    }
+  }
+  return undefined;
+}
+
 function ExplodedPieIcon() {
   return (
     <svg viewBox="0 0 24 24" className="w-5 h-5" aria-hidden="true">
@@ -251,8 +281,8 @@ export default function Dashboard() {
     date: getToday(),
     checkinTime: getCurrentTimeString(),
     weight: '',
-    fastStartTime: DEFAULT_FAST_START_TIME,
-    firstMealTime: DEFAULT_FIRST_MEAL_TIME,
+    fastStartTime: '',
+    firstMealTime: '',
     steps: '',
     ketones: '',
     glucose: '',
@@ -273,8 +303,8 @@ export default function Dashboard() {
     date: item.date,
     checkinTime: item.checkinTime || getCurrentTimeString(),
     weight: item.weight?.toString() || '',
-    fastStartTime: item.fastStartTime || DEFAULT_FAST_START_TIME,
-    firstMealTime: item.firstMealTime || DEFAULT_FIRST_MEAL_TIME,
+    fastStartTime: item.fastStartTime || '',
+    firstMealTime: item.firstMealTime || '',
     steps: item.steps?.toString() || '',
     ketones: item.ketones?.toString() || '',
     glucose: item.glucose?.toString() || '',
@@ -521,8 +551,8 @@ export default function Dashboard() {
         date: getToday(),
         checkinTime: getCurrentTimeString(),
         weight: '',
-        fastStartTime: DEFAULT_FAST_START_TIME,
-        firstMealTime: DEFAULT_FIRST_MEAL_TIME,
+        fastStartTime: '',
+        firstMealTime: '',
         steps: '',
         ketones: '',
         glucose: '',
@@ -672,27 +702,51 @@ export default function Dashboard() {
 
   const handleFastingStamp = async (field: 'fastStartTime' | 'firstMealTime') => {
     if (!userId) return;
+    if (field === 'firstMealTime') {
+      const elapsedHours = getElapsedFastingHours(todayCheckin?.fastStartTime);
+      const remainingHours = Math.max(0, fastingTargetHours - elapsedHours);
+      const exceededHours = Math.max(0, elapsedHours - fastingTargetHours);
+      const confirmMessage = remainingHours > 0
+        ? `End fasting now?\n\nTime to go: ${formatRemainingHours(remainingHours)}`
+        : exceededHours > 0
+          ? `End fasting now?\n\nExceeded by: ${formatRemainingHours(exceededHours)}\nAwesome!`
+          : 'End fasting now?';
+      if (!confirm(confirmMessage)) return;
+    }
     setIsFastingCollapsed(false);
     const stampedTime = getCurrentTimeString();
     const source = todayCheckin;
     const startsNewFast = field === 'fastStartTime' && !!source?.fastStartTime && !!source?.firstMealTime;
+    const mergedTodayValues = {
+      weight: getLatestDefinedValue(todayCheckins, (item) => item.weight),
+      steps: getLatestDefinedValue(todayCheckins, (item) => item.steps),
+      ketones: getLatestDefinedValue(todayCheckins, (item) => item.ketones),
+      glucose: getLatestDefinedValue(todayCheckins, (item) => item.glucose),
+      heartRate: getLatestDefinedValue(todayCheckins, (item) => item.heartRate),
+      bpHigh: getLatestDefinedValue(todayCheckins, (item) => item.bpHigh),
+      bpLow: getLatestDefinedValue(todayCheckins, (item) => item.bpLow),
+      saturation: getLatestDefinedValue(todayCheckins, (item) => item.saturation),
+      cholesterol: getLatestDefinedValue(todayCheckins, (item) => item.cholesterol),
+      ferritin: getLatestDefinedValue(todayCheckins, (item) => item.ferritin),
+      notes: getLatestDefinedValue(todayCheckins, (item) => item.notes),
+    };
     const savedCheckin = await saveCheckin(userId, {
       id: source?.id,
       date: getToday(),
       checkinTime: source?.checkinTime || stampedTime,
-      weight: source?.weight,
+      weight: source?.weight ?? mergedTodayValues.weight,
       fastStartTime: field === 'fastStartTime' ? stampedTime : source?.fastStartTime,
       firstMealTime: field === 'firstMealTime' ? stampedTime : startsNewFast ? null : source?.firstMealTime,
-      steps: source?.steps,
-      ketones: source?.ketones,
-      glucose: source?.glucose,
-      heartRate: source?.heartRate,
-      bpHigh: source?.bpHigh,
-      bpLow: source?.bpLow,
-      saturation: source?.saturation,
-      cholesterol: source?.cholesterol,
-      ferritin: source?.ferritin,
-      notes: source?.notes,
+      steps: source?.steps ?? mergedTodayValues.steps,
+      ketones: source?.ketones ?? mergedTodayValues.ketones,
+      glucose: source?.glucose ?? mergedTodayValues.glucose,
+      heartRate: source?.heartRate ?? mergedTodayValues.heartRate,
+      bpHigh: source?.bpHigh ?? mergedTodayValues.bpHigh,
+      bpLow: source?.bpLow ?? mergedTodayValues.bpLow,
+      saturation: source?.saturation ?? mergedTodayValues.saturation,
+      cholesterol: source?.cholesterol ?? mergedTodayValues.cholesterol,
+      ferritin: source?.ferritin ?? mergedTodayValues.ferritin,
+      notes: source?.notes ?? mergedTodayValues.notes,
     });
 
     setTodayCheckins((current) => {
@@ -811,7 +865,8 @@ export default function Dashboard() {
     isSameClockTime(todayCheckin?.firstMealTime, DEFAULT_FIRST_MEAL_TIME);
   const todayFastingHours = getFastingHours(todayCheckin?.fastStartTime, todayCheckin?.firstMealTime);
   const displayedFastStartTime = todayCheckin?.fastStartTime || DEFAULT_FAST_START_TIME;
-  const displayedFirstMealTime = todayCheckin?.firstMealTime || DEFAULT_FIRST_MEAL_TIME;
+  const projectedFirstMealTime = getProjectedFirstMealTime(todayCheckin?.fastStartTime || displayedFastStartTime, fastingTargetHours);
+  const displayedFirstMealTime = todayCheckin?.firstMealTime || projectedFirstMealTime;
   const fastingProgressPercent = isResetFastingState
     ? 0
     : getFastingProgressPercent(fastingTargetHours, todayCheckin?.fastStartTime, todayCheckin?.firstMealTime);
@@ -1014,9 +1069,11 @@ export default function Dashboard() {
                 <div>
                   <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Date</label>
                   <input
-                    type="date"
+                    type="text"
+                    inputMode="numeric"
                     value={checkinData.date}
-                    onChange={(e) => setCheckinData({...checkinData, date: e.target.value})}
+                    onChange={(e) => setCheckinData({...checkinData, date: e.target.value.replace(/\//g, '-')})}
+                    placeholder="YYYY-MM-DD"
                     className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
                   />
                 </div>
@@ -1280,16 +1337,18 @@ export default function Dashboard() {
 
       {/* Fasting Card */}
       <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setShowCheckin(true)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            setShowCheckin(true);
+          }
+        }}
         className="relative w-full text-left bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl shadow-sm p-5 border border-indigo-100 dark:border-indigo-800 overflow-hidden"
       >
-        <button
-          type="button"
-          onClick={() => {
-            if (hasActiveFast) return;
-            setIsFastingCollapsed((current) => !current);
-          }}
-          className={`flex w-full items-center justify-between gap-3 text-left ${hasActiveFast ? 'cursor-default' : 'cursor-pointer'}`}
-        >
+        <div className="flex w-full items-center justify-between gap-3 text-left">
           <span className="text-lg font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-2 whitespace-nowrap">
             <MaterialIcon name="schedule" className="text-[20px] text-indigo-600 dark:text-indigo-400" />
             Fasting
@@ -1309,12 +1368,25 @@ export default function Dashboard() {
             ) : (
               <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">In Progress</span>
             )}
-            <MaterialIcon
-              name={isFastingExpanded ? 'expand_less' : 'expand_more'}
-              className="text-[20px] text-indigo-600 dark:text-indigo-400"
-            />
+            {!hasActiveFast && (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setIsFastingCollapsed((current) => !current);
+                }}
+                className="inline-flex items-center justify-center rounded-lg p-1 hover:bg-indigo-100 dark:hover:bg-indigo-900/40"
+                aria-label={isFastingExpanded ? 'Collapse fasting card' : 'Expand fasting card'}
+                title={isFastingExpanded ? 'Collapse fasting card' : 'Expand fasting card'}
+              >
+                <MaterialIcon
+                  name={isFastingExpanded ? 'expand_less' : 'expand_more'}
+                  className="text-[20px] text-indigo-600 dark:text-indigo-400"
+                />
+              </button>
+            )}
           </span>
-        </button>
+        </div>
         {isFastingExpanded && (
           <>
         <div className="mb-3 mt-3">
@@ -1339,6 +1411,7 @@ export default function Dashboard() {
               step="0.5"
               value={fastingTargetHours}
               onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
               onChange={(event) => {
                 const nextValue = Number(event.target.value);
                 if (Number.isFinite(nextValue) && nextValue > 0) {
@@ -1374,7 +1447,7 @@ export default function Dashboard() {
                 event.stopPropagation();
                 handleFastingStamp('firstMealTime');
               }}
-              className="rounded-xl px-3 py-2 text-sm font-semibold transition-colors bg-white dark:bg-gray-800 border border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100/70 dark:hover:bg-indigo-900/40"
+              className="rounded-xl px-3 py-2 text-sm font-semibold transition-colors bg-white dark:bg-gray-800 border border-red-300 dark:border-red-700 text-indigo-700 dark:text-indigo-300 hover:bg-red-50 dark:hover:bg-red-900/20"
             >
               Start eating {formatCheckinTime(displayedFirstMealTime)}
             </button>

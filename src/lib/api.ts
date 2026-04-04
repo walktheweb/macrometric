@@ -1002,6 +1002,23 @@ export async function deleteCheckin(userId: string, checkinId: string): Promise<
   }
 }
 
+export async function clearCheckinFasting(userId: string, checkinId: string): Promise<void> {
+  const { error } = await supabase
+    .from('checkins')
+    .update({
+      fast_start_time: null,
+      first_meal_time: null,
+    })
+    .eq('id', checkinId)
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('Error clearing fasting from checkin:', error);
+  } else {
+    await syncAutoWeightMilestones(userId);
+  }
+}
+
 // Trips
 export async function getTrips(userId: string): Promise<Trip[]> {
   const { data, error } = await supabase

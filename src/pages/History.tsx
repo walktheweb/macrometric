@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { getHistory, DayLog, getCheckins, getRaceGoal, RaceGoal, deleteCheckin, Checkin, getEventGoals, EventGoalItem, getMilestones, Milestone, syncAutoWeightMilestones } from '../lib/api';
+import { getHistory, DayLog, getCheckins, getRaceGoal, RaceGoal, deleteCheckin, clearCheckinFasting, Checkin, getEventGoals, EventGoalItem, getMilestones, Milestone, syncAutoWeightMilestones } from '../lib/api';
 import { formatDateDDMMYYYY } from '../lib/date';
 import MaterialIcon from '../components/MaterialIcon';
 
@@ -115,6 +115,13 @@ export default function History() {
     if (!userId) return;
     if (!confirm('Delete this check-in?')) return;
     await deleteCheckin(userId, checkinId);
+    loadData();
+  };
+
+  const handleDeleteFasting = async (checkinId: string) => {
+    if (!userId) return;
+    if (!confirm('Delete fasting data from this check-in?')) return;
+    await clearCheckinFasting(userId, checkinId);
     loadData();
   };
 
@@ -412,6 +419,18 @@ export default function History() {
                   
                   <div className="p-4">
                     <div className="grid grid-cols-4 gap-2">
+                      {checkin.fastStartTime && (
+                        <div className="text-center">
+                          <div className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{formatTimeWithoutSeconds(checkin.fastStartTime)}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">fast start</div>
+                        </div>
+                      )}
+                      {checkin.firstMealTime && (
+                        <div className="text-center">
+                          <div className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{formatTimeWithoutSeconds(checkin.firstMealTime)}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">first meal</div>
+                        </div>
+                      )}
                       {checkin.steps && (
                         <div className="text-center">
                           <div className="text-lg font-bold text-green-600 dark:text-green-400">{checkin.steps}</div>
@@ -473,6 +492,11 @@ export default function History() {
                         </div>
                       )}
                     </div>
+                    {checkin.fastStartTime && !checkin.firstMealTime && (
+                      <div className="mt-3 pt-3 border-t border-purple-100 dark:border-purple-800 text-sm font-medium text-indigo-600 dark:text-indigo-300">
+                        Fasting started
+                      </div>
+                    )}
                     {checkin.notes && (
                       <div className="mt-3 pt-3 border-t border-purple-100 dark:border-purple-800">
                         <div className="text-sm text-gray-600 dark:text-gray-300 italic">{checkin.notes}</div>
@@ -548,7 +572,7 @@ export default function History() {
                         )}
                         <button
                           type="button"
-                          onClick={() => handleDeleteCheckin(entry.id)}
+                          onClick={() => handleDeleteFasting(entry.id)}
                           className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900 rounded-lg"
                           title="Delete"
                           aria-label="Delete fasting entry"
