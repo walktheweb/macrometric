@@ -57,6 +57,17 @@ function getFerritinToneClass(ferritin: number) {
   return 'text-red-600 dark:text-red-400';
 }
 
+function getFastingHours(fastStartTime?: string | null, firstMealTime?: string | null) {
+  if (!fastStartTime || !firstMealTime) return null;
+  const [startHour, startMinute] = fastStartTime.split(':').map(Number);
+  const [mealHour, mealMinute] = firstMealTime.split(':').map(Number);
+  if ([startHour, startMinute, mealHour, mealMinute].some((value) => !Number.isFinite(value))) return null;
+  let startTotal = startHour * 60 + startMinute;
+  let mealTotal = mealHour * 60 + mealMinute;
+  if (mealTotal <= startTotal) mealTotal += 24 * 60;
+  return Math.round(((mealTotal - startTotal) / 60) * 10) / 10;
+}
+
 export default function History() {
   const [searchParams] = useSearchParams();
   const { userId, loading: authLoading } = useAuth();
@@ -389,9 +400,9 @@ export default function History() {
                           <div className="text-xs text-gray-500 dark:text-gray-400">steps</div>
                         </div>
                       )}
-                      {typeof checkin.fastingHours === 'number' && (
+                      {getFastingHours(checkin.fastStartTime, checkin.firstMealTime) !== null && (
                         <div className="text-center">
-                          <div className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{checkin.fastingHours}</div>
+                          <div className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{getFastingHours(checkin.fastStartTime, checkin.firstMealTime)}</div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">fast h</div>
                         </div>
                       )}

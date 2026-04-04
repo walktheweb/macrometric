@@ -147,6 +147,19 @@ function formatCheckinTime(time?: string | null) {
   return `${parts[0]}:${parts[1]}`;
 }
 
+function getFastingHours(fastStartTime?: string | null, firstMealTime?: string | null) {
+  if (!fastStartTime || !firstMealTime) return null;
+  const [startHour, startMinute] = fastStartTime.split(':').map(Number);
+  const [mealHour, mealMinute] = firstMealTime.split(':').map(Number);
+  if ([startHour, startMinute, mealHour, mealMinute].some((value) => !Number.isFinite(value))) return null;
+  let startTotal = startHour * 60 + startMinute;
+  let mealTotal = mealHour * 60 + mealMinute;
+  if (mealTotal <= startTotal) {
+    mealTotal += 24 * 60;
+  }
+  return Math.round(((mealTotal - startTotal) / 60) * 10) / 10;
+}
+
 function ExplodedPieIcon() {
   return (
     <svg viewBox="0 0 24 24" className="w-5 h-5" aria-hidden="true">
@@ -211,7 +224,8 @@ export default function Dashboard() {
     date: getToday(),
     checkinTime: getCurrentTimeString(),
     weight: '',
-    fastingHours: '',
+    fastStartTime: '',
+    firstMealTime: '',
     steps: '',
     ketones: '',
     glucose: '',
@@ -232,7 +246,8 @@ export default function Dashboard() {
     date: item.date,
     checkinTime: item.checkinTime || getCurrentTimeString(),
     weight: item.weight?.toString() || '',
-    fastingHours: item.fastingHours?.toString() || '',
+    fastStartTime: item.fastStartTime || '',
+    firstMealTime: item.firstMealTime || '',
     steps: item.steps?.toString() || '',
     ketones: item.ketones?.toString() || '',
     glucose: item.glucose?.toString() || '',
@@ -555,7 +570,7 @@ export default function Dashboard() {
     // Check if at least one field is filled
     const hasData = checkinData.weight || checkinData.steps || checkinData.ketones || 
                     checkinData.glucose || checkinData.heartRate || checkinData.bpHigh || 
-                    checkinData.fastingHours ||
+                    checkinData.fastStartTime || checkinData.firstMealTime ||
                     checkinData.bpLow || checkinData.notes;
     
     if (!hasData) {
@@ -568,7 +583,8 @@ export default function Dashboard() {
       date: checkinData.date,
       checkinTime: checkinData.checkinTime || undefined,
       weight: checkinData.weight ? Number(checkinData.weight) : undefined,
-      fastingHours: checkinData.fastingHours ? Number(checkinData.fastingHours) : undefined,
+      fastStartTime: checkinData.fastStartTime || undefined,
+      firstMealTime: checkinData.firstMealTime || undefined,
       steps: checkinData.steps ? Math.round(Number(checkinData.steps)) : undefined,
       ketones: checkinData.ketones ? Number(checkinData.ketones) : undefined,
       glucose: checkinData.glucose ? Number(checkinData.glucose) : undefined,
@@ -847,13 +863,20 @@ export default function Dashboard() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Fasting (h)</label>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Fast Start</label>
                   <input
-                    type="number"
-                    value={checkinData.fastingHours}
-                    onChange={(e) => setCheckinData({...checkinData, fastingHours: e.target.value})}
-                    placeholder="16"
-                    step="0.5"
+                    type="time"
+                    value={checkinData.fastStartTime}
+                    onChange={(e) => setCheckinData({...checkinData, fastStartTime: e.target.value})}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">First Meal</label>
+                  <input
+                    type="time"
+                    value={checkinData.firstMealTime}
+                    onChange={(e) => setCheckinData({...checkinData, firstMealTime: e.target.value})}
                     className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
                   />
                 </div>
@@ -876,6 +899,11 @@ export default function Dashboard() {
                   />
                 </div>
               </div>
+              {getFastingHours(checkinData.fastStartTime, checkinData.firstMealTime) !== null && (
+                <div className="mt-2 text-xs text-indigo-600 dark:text-indigo-400">
+                  Fasting duration: {getFastingHours(checkinData.fastStartTime, checkinData.firstMealTime)} h
+                </div>
+              )}
             </div>
 
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
@@ -1060,8 +1088,8 @@ export default function Dashboard() {
             {typeof todayCheckin?.steps === 'number' && (
               <div className="text-center"><span className={`font-semibold ${getStepsTone(todayCheckin.steps)}`}>{todayCheckin.steps}</span> steps</div>
             )}
-            {typeof todayCheckin?.fastingHours === 'number' && (
-              <div className="text-center"><span className="font-semibold text-indigo-600 dark:text-indigo-400">{todayCheckin.fastingHours}</span> fast h</div>
+            {getFastingHours(todayCheckin?.fastStartTime, todayCheckin?.firstMealTime) !== null && (
+              <div className="text-center"><span className="font-semibold text-indigo-600 dark:text-indigo-400">{getFastingHours(todayCheckin?.fastStartTime, todayCheckin?.firstMealTime)}</span> fast h</div>
             )}
             {typeof todayCheckin?.ketones === 'number' && <div className="text-center"><span className={`font-semibold ${getKetonesTone(todayCheckin.ketones)}`}>{todayCheckin.ketones}</span> ketones</div>}
             {typeof todayCheckin?.glucose === 'number' && <div className="text-center"><span className={`font-semibold ${getGlucoseMmolTone(todayCheckin.glucose)}`}>{todayCheckin.glucose}</span> glucose</div>}

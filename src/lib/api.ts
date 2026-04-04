@@ -81,7 +81,8 @@ export interface Checkin {
   date: string;
   checkinTime?: string;
   weight?: number;
-  fastingHours?: number;
+  fastStartTime?: string;
+  firstMealTime?: string;
   ketones?: number;
   glucose?: number;
   heartRate?: number;
@@ -829,7 +830,8 @@ export async function getCheckins(userId: string): Promise<Checkin[]> {
     date: c.date,
     checkinTime: c.checkin_time,
     weight: c.weight,
-    fastingHours: c.fasting_hours,
+    fastStartTime: c.fast_start_time,
+    firstMealTime: c.first_meal_time,
     ketones: c.ketones,
     glucose: c.glucose,
     heartRate: c.heart_rate,
@@ -866,7 +868,8 @@ export async function getTodayCheckin(userId: string): Promise<Checkin | null> {
     date: item.date,
     checkinTime: item.checkin_time,
     weight: item.weight,
-    fastingHours: item.fasting_hours,
+    fastStartTime: item.fast_start_time,
+    firstMealTime: item.first_meal_time,
     ketones: item.ketones,
     glucose: item.glucose,
     heartRate: item.heart_rate,
@@ -898,7 +901,8 @@ export async function getCheckinsForDate(userId: string, date: string): Promise<
     date: d.date,
     checkinTime: d.checkin_time,
     weight: d.weight,
-    fastingHours: d.fasting_hours,
+    fastStartTime: d.fast_start_time,
+    firstMealTime: d.first_meal_time,
     ketones: d.ketones,
     glucose: d.glucose,
     heartRate: d.heart_rate,
@@ -918,7 +922,8 @@ export async function saveCheckin(userId: string, data: {
   date: string;
   checkinTime?: string;
   weight?: number;
-  fastingHours?: number;
+  fastStartTime?: string;
+  firstMealTime?: string;
   ketones?: number;
   glucose?: number;
   heartRate?: number;
@@ -939,7 +944,8 @@ export async function saveCheckin(userId: string, data: {
   
   if (data.checkinTime) checkin.checkin_time = data.checkinTime;
   if (data.weight !== undefined) checkin.weight = data.weight;
-  if (data.fastingHours !== undefined) checkin.fasting_hours = data.fastingHours;
+  if (data.fastStartTime !== undefined) checkin.fast_start_time = data.fastStartTime;
+  if (data.firstMealTime !== undefined) checkin.first_meal_time = data.firstMealTime;
   if (data.ketones !== undefined) checkin.ketones = data.ketones;
   if (data.glucose !== undefined) checkin.glucose = data.glucose;
   if (data.heartRate !== undefined) checkin.heart_rate = data.heartRate;
@@ -966,7 +972,8 @@ export async function saveCheckin(userId: string, data: {
     date: checkin.date,
     checkinTime: checkin.checkin_time,
     weight: checkin.weight,
-    fastingHours: checkin.fasting_hours,
+    fastStartTime: checkin.fast_start_time,
+    firstMealTime: checkin.first_meal_time,
     ketones: checkin.ketones,
     glucose: checkin.glucose,
     heartRate: checkin.heart_rate,
