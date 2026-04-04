@@ -81,6 +81,7 @@ export interface Checkin {
   date: string;
   checkinTime?: string;
   weight?: number;
+  fastingHours?: number;
   ketones?: number;
   glucose?: number;
   heartRate?: number;
@@ -828,6 +829,7 @@ export async function getCheckins(userId: string): Promise<Checkin[]> {
     date: c.date,
     checkinTime: c.checkin_time,
     weight: c.weight,
+    fastingHours: c.fasting_hours,
     ketones: c.ketones,
     glucose: c.glucose,
     heartRate: c.heart_rate,
@@ -864,6 +866,7 @@ export async function getTodayCheckin(userId: string): Promise<Checkin | null> {
     date: item.date,
     checkinTime: item.checkin_time,
     weight: item.weight,
+    fastingHours: item.fasting_hours,
     ketones: item.ketones,
     glucose: item.glucose,
     heartRate: item.heart_rate,
@@ -895,6 +898,7 @@ export async function getCheckinsForDate(userId: string, date: string): Promise<
     date: d.date,
     checkinTime: d.checkin_time,
     weight: d.weight,
+    fastingHours: d.fasting_hours,
     ketones: d.ketones,
     glucose: d.glucose,
     heartRate: d.heart_rate,
@@ -914,6 +918,7 @@ export async function saveCheckin(userId: string, data: {
   date: string;
   checkinTime?: string;
   weight?: number;
+  fastingHours?: number;
   ketones?: number;
   glucose?: number;
   heartRate?: number;
@@ -934,6 +939,7 @@ export async function saveCheckin(userId: string, data: {
   
   if (data.checkinTime) checkin.checkin_time = data.checkinTime;
   if (data.weight !== undefined) checkin.weight = data.weight;
+  if (data.fastingHours !== undefined) checkin.fasting_hours = data.fastingHours;
   if (data.ketones !== undefined) checkin.ketones = data.ketones;
   if (data.glucose !== undefined) checkin.glucose = data.glucose;
   if (data.heartRate !== undefined) checkin.heart_rate = data.heartRate;
@@ -960,6 +966,7 @@ export async function saveCheckin(userId: string, data: {
     date: checkin.date,
     checkinTime: checkin.checkin_time,
     weight: checkin.weight,
+    fastingHours: checkin.fasting_hours,
     ketones: checkin.ketones,
     glucose: checkin.glucose,
     heartRate: checkin.heart_rate,

@@ -389,6 +389,12 @@ export default function History() {
                           <div className="text-xs text-gray-500 dark:text-gray-400">steps</div>
                         </div>
                       )}
+                      {typeof checkin.fastingHours === 'number' && (
+                        <div className="text-center">
+                          <div className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{checkin.fastingHours}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">fast h</div>
+                        </div>
+                      )}
                       {checkin.weight && (
                         <div className="text-center">
                           <div className="text-lg font-bold text-gray-900 dark:text-gray-100">{checkin.weight}</div>

@@ -112,6 +112,13 @@ function getFerritinTone(ferritin: number) {
   return getToneClass('red');
 }
 
+function getStepsTone(steps: number) {
+  if (steps < 5000) return getToneClass('red');
+  if (steps < 7000) return getToneClass('orange');
+  if (steps < 9000) return getToneClass('amber');
+  return getToneClass('green');
+}
+
 function getElapsedFromDate(date: string) {
   const then = new Date(`${date}T00:00:00`);
   const now = new Date();
@@ -204,6 +211,7 @@ export default function Dashboard() {
     date: getToday(),
     checkinTime: getCurrentTimeString(),
     weight: '',
+    fastingHours: '',
     steps: '',
     ketones: '',
     glucose: '',
@@ -224,6 +232,7 @@ export default function Dashboard() {
     date: item.date,
     checkinTime: item.checkinTime || getCurrentTimeString(),
     weight: item.weight?.toString() || '',
+    fastingHours: item.fastingHours?.toString() || '',
     steps: item.steps?.toString() || '',
     ketones: item.ketones?.toString() || '',
     glucose: item.glucose?.toString() || '',
@@ -546,6 +555,7 @@ export default function Dashboard() {
     // Check if at least one field is filled
     const hasData = checkinData.weight || checkinData.steps || checkinData.ketones || 
                     checkinData.glucose || checkinData.heartRate || checkinData.bpHigh || 
+                    checkinData.fastingHours ||
                     checkinData.bpLow || checkinData.notes;
     
     if (!hasData) {
@@ -558,6 +568,7 @@ export default function Dashboard() {
       date: checkinData.date,
       checkinTime: checkinData.checkinTime || undefined,
       weight: checkinData.weight ? Number(checkinData.weight) : undefined,
+      fastingHours: checkinData.fastingHours ? Number(checkinData.fastingHours) : undefined,
       steps: checkinData.steps ? Math.round(Number(checkinData.steps)) : undefined,
       ketones: checkinData.ketones ? Number(checkinData.ketones) : undefined,
       glucose: checkinData.glucose ? Number(checkinData.glucose) : undefined,
@@ -836,6 +847,17 @@ export default function Dashboard() {
                   />
                 </div>
                 <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Fasting (h)</label>
+                  <input
+                    type="number"
+                    value={checkinData.fastingHours}
+                    onChange={(e) => setCheckinData({...checkinData, fastingHours: e.target.value})}
+                    placeholder="16"
+                    step="0.5"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                  />
+                </div>
+                <div>
                   <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Date</label>
                   <input
                     type="date"
@@ -1036,7 +1058,10 @@ export default function Dashboard() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
             {typeof todayCheckin?.steps === 'number' && (
-              <div className="text-center"><span className="font-semibold">{todayCheckin.steps}</span> steps</div>
+              <div className="text-center"><span className={`font-semibold ${getStepsTone(todayCheckin.steps)}`}>{todayCheckin.steps}</span> steps</div>
+            )}
+            {typeof todayCheckin?.fastingHours === 'number' && (
+              <div className="text-center"><span className="font-semibold text-indigo-600 dark:text-indigo-400">{todayCheckin.fastingHours}</span> fast h</div>
             )}
             {typeof todayCheckin?.ketones === 'number' && <div className="text-center"><span className={`font-semibold ${getKetonesTone(todayCheckin.ketones)}`}>{todayCheckin.ketones}</span> ketones</div>}
             {typeof todayCheckin?.glucose === 'number' && <div className="text-center"><span className={`font-semibold ${getGlucoseMmolTone(todayCheckin.glucose)}`}>{todayCheckin.glucose}</span> glucose</div>}
@@ -1071,11 +1096,11 @@ export default function Dashboard() {
           <span className="text-lg font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-2 whitespace-nowrap">
             <MaterialIcon name="directions_walk" className="text-[20px] text-green-600 dark:text-green-400" />
             Steps
-            <span className="text-base font-semibold text-green-600 dark:text-green-400">
+            <span className={`text-base font-semibold ${getStepsTone(todaySteps)}`}>
               {todaySteps > 0 ? Math.round((todaySteps / stepGoal) * 100) : 0}%
             </span>
           </span>
-          <span className="text-sm font-semibold text-gray-700 dark:text-gray-200 whitespace-nowrap">
+          <span className={`text-sm font-semibold whitespace-nowrap ${getStepsTone(todaySteps)}`}>
             {todaySteps} / {stepGoal}
           </span>
         </div>
