@@ -5,3 +5,7 @@ node_modules/
 dist/
 .vscode/
 debug.log
+.env.local
+.env.api.local
+
+.vercel

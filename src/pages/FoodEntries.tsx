@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { addLog, deleteLog, FoodLog, getLogs, getToday, updateLog } from '../lib/api';
+import { normalizeToDisplayDate, normalizeToIsoDate } from '../lib/date';
 
 type EditableField = 'name' | 'brand' | 'calories' | 'protein' | 'carbs' | 'fat' | 'serving' | 'quantity';
 type SortKey = 'name' | 'brand' | 'quantity' | 'serving' | 'calories' | 'protein' | 'carbs' | 'fat' | 'foodId';
@@ -543,13 +544,16 @@ export default function FoodEntries() {
             <label className="text-sm font-medium text-gray-600 dark:text-gray-300">Date</label>
             <input
               data-autofocus-first
-              type="date"
-              value={date}
+              type="text"
+              inputMode="numeric"
+              value={normalizeToDisplayDate(date, normalizeToDisplayDate(today))}
               onChange={(e) => {
+                const normalized = normalizeToIsoDate(e.target.value, date);
                 const next = new URLSearchParams(searchParams);
-                next.set('date', e.target.value);
+                next.set('date', normalized);
                 setSearchParams(next, { replace: true });
               }}
+              placeholder="DD-MM-YYYY"
               className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             />
             <Link

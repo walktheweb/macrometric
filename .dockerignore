@@ -1,0 +1,14 @@
+.git
+.vercel
+.vscode
+node_modules
+dist
+dist-server
+debug.log
+devserver.err.log
+devserver.out.log
+Dockerfile*
+docker-compose.yml
+README.md
+RELEASE_NOTES.md
+imports

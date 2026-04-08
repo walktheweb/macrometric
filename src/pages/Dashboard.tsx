@@ -1,10 +1,9 @@
 ﻿import { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { getLogs, getGoals, deleteLog, updateLog, DayLog, Goal, FoodLog, getTodayCheckin, saveCheckin, getCheckins, getTrips, getRaceGoal, getDaysUntilRace, RaceGoal, getStepGoal, Checkin, getToday, deleteCheckin, getCheckinsForDate } from '../lib/api';
-import { formatDateDDMMYYYY } from '../lib/date';
+import { getLogs, getGoals, deleteLog, updateLog, DayLog, Goal, FoodLog, saveCheckin, getCheckins, getRaceGoal, getDaysUntilRace, RaceGoal, getStepGoal, Checkin, getToday, deleteCheckin, getCheckinsForDate, getFastingSessions, startFasting, endFasting, updateFastingSession, deleteFastingSession, FastingSession } from '../lib/api';
+import { formatDateDDMMYYYY, normalizeToDisplayDate, normalizeToIsoDate } from '../lib/date';
 import RaceProgress from '../components/RaceProgress';
-import TripWidget from '../components/TripWidget';
 import MaterialIcon from '../components/MaterialIcon';
 
 function MacroBar({
@@ -196,6 +195,21 @@ function getProjectedFirstMealTime(fastStartTime?: string | null, targetHours = 
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
 
+function isResetFastingCheckin(item?: Pick<Checkin, 'fastStartTime' | 'firstMealTime'> | null) {
+  return (
+    isSameClockTime(item?.fastStartTime, DEFAULT_FAST_START_TIME) &&
+    isSameClockTime(item?.firstMealTime, DEFAULT_FIRST_MEAL_TIME)
+  );
+}
+
+function isOpenFastingCheckin(item?: Checkin | null) {
+  return !!item?.fastStartTime && !item.firstMealTime && !isResetFastingCheckin(item);
+}
+
+function isActiveFastingSession(item?: FastingSession | null) {
+  return !!item?.startTime && !item.endTime;
+}
+
 function formatRemainingHours(hours: number) {
   const totalMinutes = Math.max(0, Math.round(hours * 60));
   const remainingHours = Math.floor(totalMinutes / 60);
@@ -203,6 +217,10 @@ function formatRemainingHours(hours: number) {
   if (remainingHours > 0 && remainingMinutes > 0) return `${remainingHours}h ${remainingMinutes}m`;
   if (remainingHours > 0) return `${remainingHours}h`;
   return `${remainingMinutes}m`;
+}
+
+function getPreferredFastingSession(sessions: FastingSession[]) {
+  return sessions.find(isActiveFastingSession) || sessions.find((item) => !!item.endTime) || null;
 }
 
 function getLatestDefinedValue<T>(items: Checkin[], picker: (item: Checkin) => T | undefined) {
@@ -258,10 +276,12 @@ export default function Dashboard() {
   const [editQuantityInput, setEditQuantityInput] = useState('1');
   const [editQuantityType, setEditQuantityType] = useState<'number' | 'grams'>('number');
   const [showCheckin, setShowCheckin] = useState(false);
+  const [showFastingEditor, setShowFastingEditor] = useState(false);
   const [editingCheckin, setEditingCheckin] = useState<Checkin | null>(null);
+  const [editingFastingSession, setEditingFastingSession] = useState<FastingSession | null>(null);
   const [todayCheckins, setTodayCheckins] = useState<Checkin[]>([]);
   const [checkins, setCheckins] = useState<Checkin[]>([]);
-  const [trips, setTrips] = useState<any[]>([]);
+  const [fastingSessions, setFastingSessions] = useState<FastingSession[]>([]);
   const [raceGoal, setRaceGoal] = useState<RaceGoal>({ eventName: '', raceDate: '2026-05-23', targetWeight: 80, weeklyTarget: 0.5 });
   const [daysUntil, setDaysUntil] = useState(57);
   const [weeksUntil, setWeeksUntil] = useState(8);
@@ -278,7 +298,7 @@ export default function Dashboard() {
   
   const [checkinData, setCheckinData] = useState({
     id: '',
-    date: getToday(),
+    date: normalizeToDisplayDate(getToday(), formatDateDDMMYYYY(getToday())),
     checkinTime: getCurrentTimeString(),
     weight: '',
     fastStartTime: '',
@@ -294,17 +314,24 @@ export default function Dashboard() {
     ferritin: '',
     notes: '',
   });
+  const [fastingEditorData, setFastingEditorData] = useState({
+    id: '',
+    date: getToday(),
+    startTime: DEFAULT_FAST_START_TIME,
+    endTime: '',
+  });
   const editCheckinId = searchParams.get('editCheckin');
+  const editFastingId = searchParams.get('editFasting');
   const openCheckinParam = searchParams.get('openCheckin');
   const fromHistory = searchParams.get('from') === 'history';
 
   const toCheckinFormData = (item: Checkin) => ({
     id: item.id || '',
-    date: item.date,
+    date: normalizeToDisplayDate(item.date, formatDateDDMMYYYY(getToday())),
     checkinTime: item.checkinTime || getCurrentTimeString(),
     weight: item.weight?.toString() || '',
-    fastStartTime: item.fastStartTime || '',
-    firstMealTime: item.firstMealTime || '',
+    fastStartTime: '',
+    firstMealTime: '',
     steps: item.steps?.toString() || '',
     ketones: item.ketones?.toString() || '',
     glucose: item.glucose?.toString() || '',
@@ -331,6 +358,20 @@ export default function Dashboard() {
     setSearchParams(next, { replace: true });
   };
 
+  const clearEditFastingParam = () => {
+    if (!searchParams.get('editFasting')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('editFasting');
+    setSearchParams(next, { replace: true });
+  };
+
+  const toFastingFormData = (item?: FastingSession | null) => ({
+    id: item?.id || '',
+    date: normalizeToDisplayDate(item?.date),
+    startTime: item?.startTime || DEFAULT_FAST_START_TIME,
+    endTime: item?.endTime || '',
+  });
+
   const handleCloseCheckinEditor = () => {
     const shouldReturnToHistory = fromHistory && !!editingCheckin;
     setShowCheckin(false);
@@ -339,6 +380,28 @@ export default function Dashboard() {
     if (shouldReturnToHistory) {
       navigate('/history?tab=checkin');
     }
+  };
+
+  const handleCloseFastingEditor = () => {
+    const shouldReturnToHistory = fromHistory && !!editingFastingSession;
+    setShowFastingEditor(false);
+    setEditingFastingSession(null);
+    clearEditFastingParam();
+    if (shouldReturnToHistory) {
+      navigate('/history?tab=fasting');
+    }
+  };
+
+  const openFastingEditor = (session?: FastingSession | null) => {
+    const target = session || getPreferredFastingSession(fastingSessions);
+    setEditingLog(null);
+    setShowCheckin(false);
+    setEditingCheckin(null);
+    setEditingFastingSession(target);
+    setFastingEditorData(toFastingFormData(target));
+    setShowFastingEditor(true);
+    clearEditCheckinParam();
+    clearOpenCheckinParam();
   };
 
   useEffect(() => {
@@ -381,7 +444,9 @@ export default function Dashboard() {
     const handleTodayNav = () => {
       setEditingLog(null);
       setShowCheckin(false);
+      setShowFastingEditor(false);
       setEditingCheckin(null);
+      setEditingFastingSession(null);
     };
 
     window.addEventListener('macrometric:today-nav', handleTodayNav);
@@ -393,6 +458,8 @@ export default function Dashboard() {
   useEffect(() => {
     const handleOpenCheckin = () => {
       setEditingLog(null);
+      setShowFastingEditor(false);
+      setEditingFastingSession(null);
       setEditingCheckin(null);
       setShowCheckin(true);
       clearEditCheckinParam();
@@ -404,13 +471,13 @@ export default function Dashboard() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (editingLog || showCheckin) {
+    if (editingLog || showCheckin || showFastingEditor) {
       window.dispatchEvent(new Event('macrometric:focus-first-input'));
     }
-  }, [editingLog, showCheckin]);
+  }, [editingLog, showCheckin, showFastingEditor]);
 
   useEffect(() => {
-    if (!editingLog && !showCheckin) return;
+    if (!editingLog && !showCheckin && !showFastingEditor) return;
 
     const checkinHasExistingId = !!(checkinData.id || editingCheckin?.id);
     const headerContext = editingLog
@@ -421,15 +488,25 @@ export default function Dashboard() {
             { id: 'save', label: 'Save', tone: 'primary' },
           ],
         }
-      : {
-          showBack: true,
-          buttons: checkinHasExistingId
-            ? [
-                { id: 'delete-checkin', label: 'Delete', tone: 'danger' },
-                { id: 'save-checkin', label: 'Save', tone: 'primary' },
-              ]
-            : [{ id: 'save-checkin', label: 'Save', tone: 'primary' }],
-        };
+      : showCheckin
+        ? {
+            showBack: true,
+            buttons: checkinHasExistingId
+              ? [
+                  { id: 'delete-checkin', label: 'Delete', tone: 'danger' },
+                  { id: 'save-checkin', label: 'Save', tone: 'primary' },
+                ]
+              : [{ id: 'save-checkin', label: 'Save', tone: 'primary' }],
+          }
+        : {
+            showBack: true,
+            buttons: editingFastingSession?.id
+              ? [
+                  { id: 'delete-fasting', label: 'Delete', tone: 'danger' },
+                  { id: 'save-fasting', label: 'Save', tone: 'primary' },
+                ]
+              : [{ id: 'save-fasting', label: 'Save', tone: 'primary' }],
+          };
 
     window.dispatchEvent(new CustomEvent('macrometric:header-context', { detail: headerContext }));
 
@@ -440,6 +517,10 @@ export default function Dashboard() {
       }
       if (showCheckin) {
         handleCloseCheckinEditor();
+        return;
+      }
+      if (showFastingEditor) {
+        handleCloseFastingEditor();
       }
     };
 
@@ -461,6 +542,14 @@ export default function Dashboard() {
       }
       if (actionId === 'save-checkin' && showCheckin) {
         await handleSaveCheckin();
+        return;
+      }
+      if (actionId === 'delete-fasting' && showFastingEditor) {
+        await handleDeleteCurrentFastingSession();
+        return;
+      }
+      if (actionId === 'save-fasting' && showFastingEditor) {
+        await handleSaveFastingSession();
       }
     };
 
@@ -472,7 +561,7 @@ export default function Dashboard() {
       window.removeEventListener('macrometric:header-action', handleHeaderAction as EventListener);
       window.dispatchEvent(new CustomEvent('macrometric:header-context', { detail: null }));
     };
-  }, [editingLog, showCheckin, checkinData, editQuantityInput, editQuantityType]);
+  }, [editingLog, showCheckin, showFastingEditor, checkinData, editingCheckin, editingFastingSession, fastingEditorData, editQuantityInput, editQuantityType]);
 
   useEffect(() => {
     if (!editCheckinId || checkins.length === 0) return;
@@ -484,6 +573,13 @@ export default function Dashboard() {
   }, [editCheckinId, checkins]);
 
   useEffect(() => {
+    if (!editFastingId || fastingSessions.length === 0) return;
+    const target = fastingSessions.find((item) => item.id === editFastingId);
+    if (!target) return;
+    openFastingEditor(target);
+  }, [editFastingId, fastingSessions]);
+
+  useEffect(() => {
     if (openCheckinParam !== '1') return;
     setEditingLog(null);
     setEditingCheckin(null);
@@ -492,26 +588,23 @@ export default function Dashboard() {
   }, [openCheckinParam]);
 
   useEffect(() => {
-    const latestTodayCheckin = todayCheckins[todayCheckins.length - 1] || null;
-    const isResetState =
-      isSameClockTime(latestTodayCheckin?.fastStartTime, DEFAULT_FAST_START_TIME) &&
-      isSameClockTime(latestTodayCheckin?.firstMealTime, DEFAULT_FIRST_MEAL_TIME);
-    const hasActiveFastNow = !!latestTodayCheckin?.fastStartTime && !latestTodayCheckin?.firstMealTime && !isResetState;
+    const latestOpenFast = fastingSessions.find(isActiveFastingSession);
+    const hasActiveFastNow = !!latestOpenFast;
     if (hasActiveFastNow) {
       setIsFastingCollapsed(false);
     }
-  }, [todayCheckins]);
+  }, [fastingSessions]);
 
   const loadData = async () => {
     if (!userId) return;
     
     setLoading(true);
-    const [logsData, goalsData, checkinsData, tripsData, todayData, raceGoalData, stepGoalData] = await Promise.all([
+    const [logsData, goalsData, checkinsData, todayData, fastingData, raceGoalData, stepGoalData] = await Promise.all([
       getLogs(userId),
       getGoals(userId),
       getCheckins(userId),
-      getTrips(userId),
       getCheckinsForDate(userId, getToday()),
+      getFastingSessions(userId),
       getRaceGoal(userId),
       getStepGoal(userId),
     ]);
@@ -519,8 +612,8 @@ export default function Dashboard() {
     setLogs(logsData);
     setGoals(goalsData);
     setCheckins(checkinsData);
-    setTrips(tripsData);
     setTodayCheckins(todayData);
+    setFastingSessions(fastingData);
     window.dispatchEvent(new CustomEvent('macrometric:checkin-updated', { detail: { hasTodayCheckin: todayData.length > 0 } }));
     setRaceGoal(raceGoalData);
     setStepGoal(stepGoalData);
@@ -548,7 +641,7 @@ export default function Dashboard() {
       // Reset to default
       setCheckinData({
         id: '',
-        date: getToday(),
+        date: normalizeToDisplayDate(getToday(), formatDateDDMMYYYY(getToday())),
         checkinTime: getCurrentTimeString(),
         weight: '',
         fastStartTime: '',
@@ -653,8 +746,7 @@ export default function Dashboard() {
     
     // Check if at least one field is filled
     const hasData = checkinData.weight || checkinData.steps || checkinData.ketones || 
-                    checkinData.glucose || checkinData.heartRate || checkinData.bpHigh || 
-                    checkinData.fastStartTime || checkinData.firstMealTime ||
+                    checkinData.glucose || checkinData.heartRate || checkinData.bpHigh ||
                     checkinData.bpLow || checkinData.notes;
     
     if (!hasData) {
@@ -664,11 +756,9 @@ export default function Dashboard() {
     
     await saveCheckin(userId, {
       id: checkinData.id || undefined,
-      date: checkinData.date,
+      date: normalizeToIsoDate(checkinData.date, getToday()),
       checkinTime: checkinData.checkinTime || undefined,
       weight: checkinData.weight ? Number(checkinData.weight) : undefined,
-      fastStartTime: checkinData.fastStartTime || undefined,
-      firstMealTime: checkinData.firstMealTime || undefined,
       steps: checkinData.steps ? Math.round(Number(checkinData.steps)) : undefined,
       ketones: checkinData.ketones ? Number(checkinData.ketones) : undefined,
       glucose: checkinData.glucose ? Number(checkinData.glucose) : undefined,
@@ -684,7 +774,6 @@ export default function Dashboard() {
     setEditingCheckin(null);
     clearEditCheckinParam();
     loadData();
-    window.dispatchEvent(new CustomEvent('macrometric:checkin-updated', { detail: { hasTodayCheckin: true } }));
   };
 
   const handleDeleteCurrentCheckin = async () => {
@@ -697,13 +786,58 @@ export default function Dashboard() {
     setEditingCheckin(null);
     clearEditCheckinParam();
     loadData();
-    window.dispatchEvent(new CustomEvent('macrometric:checkin-updated', { detail: { hasTodayCheckin: false } }));
+  };
+
+  const handleSaveFastingSession = async () => {
+    if (!userId) return;
+    if (!fastingEditorData.date || !fastingEditorData.startTime) {
+      alert('Please enter a date and start time');
+      return;
+    }
+    const fastingDate = normalizeToIsoDate(fastingEditorData.date);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fastingDate)) {
+      alert('Please enter the date as dd-mm-yyyy');
+      return;
+    }
+
+    try {
+      if (editingFastingSession?.id) {
+        await updateFastingSession(userId, editingFastingSession.id, {
+          date: fastingDate,
+          startTime: fastingEditorData.startTime,
+          endTime: fastingEditorData.endTime || null,
+        });
+      } else {
+        const created = await startFasting(userId, {
+          date: fastingDate,
+          startTime: fastingEditorData.startTime,
+        });
+        if (fastingEditorData.endTime) {
+          await endFasting(userId, created.id, { endTime: fastingEditorData.endTime });
+        }
+      }
+
+      handleCloseFastingEditor();
+      await loadData();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save fasting session';
+      alert(message);
+    }
+  };
+
+  const handleDeleteCurrentFastingSession = async () => {
+    if (!userId || !editingFastingSession?.id) return;
+    if (!confirm('Delete this fasting session?')) return;
+    await deleteFastingSession(userId, editingFastingSession.id);
+    handleCloseFastingEditor();
+    await loadData();
   };
 
   const handleFastingStamp = async (field: 'fastStartTime' | 'firstMealTime') => {
     if (!userId) return;
+    const openFast = fastingSessions.find(isActiveFastingSession) || null;
     if (field === 'firstMealTime') {
-      const elapsedHours = getElapsedFastingHours(todayCheckin?.fastStartTime);
+      const elapsedHours = getElapsedFastingHours(openFast?.startTime);
       const remainingHours = Math.max(0, fastingTargetHours - elapsedHours);
       const exceededHours = Math.max(0, elapsedHours - fastingTargetHours);
       const confirmMessage = remainingHours > 0
@@ -715,64 +849,13 @@ export default function Dashboard() {
     }
     setIsFastingCollapsed(false);
     const stampedTime = getCurrentTimeString();
-    const source = todayCheckin;
-    const startsNewFast = field === 'fastStartTime' && !!source?.fastStartTime && !!source?.firstMealTime;
-    const mergedTodayValues = {
-      weight: getLatestDefinedValue(todayCheckins, (item) => item.weight),
-      steps: getLatestDefinedValue(todayCheckins, (item) => item.steps),
-      ketones: getLatestDefinedValue(todayCheckins, (item) => item.ketones),
-      glucose: getLatestDefinedValue(todayCheckins, (item) => item.glucose),
-      heartRate: getLatestDefinedValue(todayCheckins, (item) => item.heartRate),
-      bpHigh: getLatestDefinedValue(todayCheckins, (item) => item.bpHigh),
-      bpLow: getLatestDefinedValue(todayCheckins, (item) => item.bpLow),
-      saturation: getLatestDefinedValue(todayCheckins, (item) => item.saturation),
-      cholesterol: getLatestDefinedValue(todayCheckins, (item) => item.cholesterol),
-      ferritin: getLatestDefinedValue(todayCheckins, (item) => item.ferritin),
-      notes: getLatestDefinedValue(todayCheckins, (item) => item.notes),
-    };
-    const savedCheckin = await saveCheckin(userId, {
-      id: source?.id,
-      date: getToday(),
-      checkinTime: source?.checkinTime || stampedTime,
-      weight: source?.weight ?? mergedTodayValues.weight,
-      fastStartTime: field === 'fastStartTime' ? stampedTime : source?.fastStartTime,
-      firstMealTime: field === 'firstMealTime' ? stampedTime : startsNewFast ? null : source?.firstMealTime,
-      steps: source?.steps ?? mergedTodayValues.steps,
-      ketones: source?.ketones ?? mergedTodayValues.ketones,
-      glucose: source?.glucose ?? mergedTodayValues.glucose,
-      heartRate: source?.heartRate ?? mergedTodayValues.heartRate,
-      bpHigh: source?.bpHigh ?? mergedTodayValues.bpHigh,
-      bpLow: source?.bpLow ?? mergedTodayValues.bpLow,
-      saturation: source?.saturation ?? mergedTodayValues.saturation,
-      cholesterol: source?.cholesterol ?? mergedTodayValues.cholesterol,
-      ferritin: source?.ferritin ?? mergedTodayValues.ferritin,
-      notes: source?.notes ?? mergedTodayValues.notes,
-    });
-
-    setTodayCheckins((current) => {
-      const next = current.filter((item) => item.id !== savedCheckin.id);
-      next.push(savedCheckin);
-      return next.sort((a, b) => {
-        const timeA = a.checkinTime || '';
-        const timeB = b.checkinTime || '';
-        if (timeA !== timeB) return timeA.localeCompare(timeB);
-        return a.createdAt - b.createdAt;
-      });
-    });
-    setCheckins((current) => {
-      const next = current.filter((item) => item.id !== savedCheckin.id);
-      next.unshift(savedCheckin);
-      return next.sort((a, b) => {
-        const dateCompare = b.date.localeCompare(a.date);
-        if (dateCompare !== 0) return dateCompare;
-        const timeCompare = (b.checkinTime || '').localeCompare(a.checkinTime || '');
-        if (timeCompare !== 0) return timeCompare;
-        return b.createdAt - a.createdAt;
-      });
-    });
+    if (field === 'fastStartTime') {
+      await startFasting(userId, { date: getToday(), startTime: stampedTime });
+    } else if (openFast) {
+      await endFasting(userId, openFast.id, { endTime: stampedTime });
+    }
 
     await loadData();
-    window.dispatchEvent(new CustomEvent('macrometric:checkin-updated', { detail: { hasTodayCheckin: true } }));
   };
 
   if (authLoading || loading) {
@@ -860,29 +943,29 @@ export default function Dashboard() {
   // Get today's steps (aggregate from all check-ins today)
   const todaySteps = todayCheckins.reduce((sum, c) => sum + (c.steps || 0), 0);
   const todayCheckin = todayCheckins[todayCheckins.length - 1] || null;
-  const isResetFastingState =
-    isSameClockTime(todayCheckin?.fastStartTime, DEFAULT_FAST_START_TIME) &&
-    isSameClockTime(todayCheckin?.firstMealTime, DEFAULT_FIRST_MEAL_TIME);
-  const todayFastingHours = getFastingHours(todayCheckin?.fastStartTime, todayCheckin?.firstMealTime);
-  const displayedFastStartTime = todayCheckin?.fastStartTime || DEFAULT_FAST_START_TIME;
-  const projectedFirstMealTime = getProjectedFirstMealTime(todayCheckin?.fastStartTime || displayedFastStartTime, fastingTargetHours);
-  const displayedFirstMealTime = todayCheckin?.firstMealTime || projectedFirstMealTime;
-  const fastingProgressPercent = isResetFastingState
-    ? 0
-    : getFastingProgressPercent(fastingTargetHours, todayCheckin?.fastStartTime, todayCheckin?.firstMealTime);
-  const fastingProgressHours = isResetFastingState
-    ? 0
-    : (todayFastingHours ?? getElapsedFastingHours(todayCheckin?.fastStartTime));
-  const fastingSuccess = !isResetFastingState && todayFastingHours !== null && todayFastingHours >= fastingTargetHours;
-  const fastingCompleted = !isResetFastingState && todayFastingHours !== null;
+  const activeFastingSession = fastingSessions.find(isActiveFastingSession) || null;
+  const latestCompletedFastingSession = fastingSessions.find((item) => !!item.endTime) || null;
+  const fastingSession = activeFastingSession || latestCompletedFastingSession;
+  const todayFastingHours = getFastingHours(fastingSession?.startTime, fastingSession?.endTime);
+  const displayedFastStartTime = fastingSession?.startTime || DEFAULT_FAST_START_TIME;
+  const projectedFirstMealTime = getProjectedFirstMealTime(fastingSession?.startTime || displayedFastStartTime, fastingTargetHours);
+  const displayedFirstMealTime = fastingSession?.endTime || projectedFirstMealTime;
+  const fastingProgressPercent = getFastingProgressPercent(fastingTargetHours, fastingSession?.startTime, fastingSession?.endTime);
+  const fastingProgressHours = todayFastingHours ?? getElapsedFastingHours(fastingSession?.startTime);
+  const fastingSuccess = todayFastingHours !== null && todayFastingHours >= fastingTargetHours;
+  const fastingCompleted = todayFastingHours !== null;
   const fastingTooShort = fastingCompleted && !fastingSuccess;
-  const showStopEatingButton = fastingCompleted || isResetFastingState || !todayCheckin?.fastStartTime;
-  const showStartEatingButton = fastingCompleted || isResetFastingState || !todayCheckin?.firstMealTime;
+  const showStopEatingButton = fastingCompleted || !fastingSession?.startTime;
+  const showStartEatingButton = fastingCompleted || !fastingSession?.endTime;
   const canEditFastingTarget = showStopEatingButton && showStartEatingButton;
-  const hasActiveFast = !!todayCheckin?.fastStartTime && !todayCheckin?.firstMealTime && !isResetFastingState;
+  const hasActiveFast = !!activeFastingSession;
+  const fastingRemainingHours = hasActiveFast ? Math.max(0, fastingTargetHours - fastingProgressHours) : 0;
+  const fastingExceededHours = hasActiveFast ? Math.max(0, fastingProgressHours - fastingTargetHours) : 0;
   const isFastingExpanded = hasActiveFast || !isFastingCollapsed;
   const fastingNotStarted = !hasActiveFast && !fastingCompleted;
-  const fastingHelpText = showStopEatingButton
+  const fastingHelpText = fastingCompleted
+    ? ''
+    : showStopEatingButton
     ? 'Press button to start fasting'
     : showStartEatingButton
       ? 'Press button to end fasting'
@@ -1012,6 +1095,65 @@ export default function Dashboard() {
     );
   }
 
+  if (showFastingEditor) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+              {editingFastingSession ? 'Edit Fasting' : 'New Fasting Session'}
+            </h2>
+            <div className="text-right text-sm text-gray-500 dark:text-gray-400">
+              {normalizeToDisplayDate(fastingEditorData.date)}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="rounded-xl border border-indigo-200 dark:border-indigo-800 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-300 mb-2">Fasting Session</div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Date</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoFocus
+                    value={fastingEditorData.date}
+                    onChange={(event) => setFastingEditorData({ ...fastingEditorData, date: event.target.value.replace(/\//g, '-') })}
+                    placeholder="DD-MM-YYYY"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Start time</label>
+                  <input
+                    type="time"
+                    value={fastingEditorData.startTime}
+                    onChange={(event) => setFastingEditorData({ ...fastingEditorData, startTime: event.target.value })}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">End time</label>
+                  <input
+                    type="time"
+                    value={fastingEditorData.endTime}
+                    onChange={(event) => setFastingEditorData({ ...fastingEditorData, endTime: event.target.value })}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-indigo-50 dark:bg-indigo-900/20 p-3 text-sm text-gray-700 dark:text-gray-200">
+              Leave <span className="font-semibold">End time</span> empty if the fast is still active.
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (showCheckin) {
     return (
       <div className="space-y-4">
@@ -1020,7 +1162,10 @@ export default function Dashboard() {
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
               {editingCheckin ? 'Edit Check-in' : 'Daily Check-in'}
             </h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">{formatDateDDMMYYYY(checkinData.date)}</p>
+            <div className="grid grid-cols-[auto_auto] gap-x-3 text-right text-sm text-gray-500 dark:text-gray-400">
+              <div className="tabular-nums">{formatDateDDMMYYYY(checkinData.date)}</div>
+              <div className="tabular-nums min-w-[3.5rem]">{formatCheckinTime(checkinData.checkinTime) || ''}</div>
+            </div>
           </div>
           
           <div className="space-y-3">
@@ -1049,31 +1194,13 @@ export default function Dashboard() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Fast Start</label>
-                  <input
-                    type="time"
-                    value={checkinData.fastStartTime}
-                    onChange={(e) => setCheckinData({...checkinData, fastStartTime: e.target.value})}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">First Meal</label>
-                  <input
-                    type="time"
-                    value={checkinData.firstMealTime}
-                    onChange={(e) => setCheckinData({...checkinData, firstMealTime: e.target.value})}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-                  />
-                </div>
-                <div>
                   <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Date</label>
                   <input
                     type="text"
                     inputMode="numeric"
                     value={checkinData.date}
                     onChange={(e) => setCheckinData({...checkinData, date: e.target.value.replace(/\//g, '-')})}
-                    placeholder="YYYY-MM-DD"
+                    placeholder="DD-MM-YYYY"
                     className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
                   />
                 </div>
@@ -1087,11 +1214,6 @@ export default function Dashboard() {
                   />
                 </div>
               </div>
-              {getFastingHours(checkinData.fastStartTime, checkinData.firstMealTime) !== null && (
-                <div className="mt-2 text-xs text-indigo-600 dark:text-indigo-400">
-                  Fasting duration: {getFastingHours(checkinData.fastStartTime, checkinData.firstMealTime)} h
-                </div>
-              )}
             </div>
 
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
@@ -1339,11 +1461,11 @@ export default function Dashboard() {
       <div
         role="button"
         tabIndex={0}
-        onClick={() => setShowCheckin(true)}
+        onClick={() => openFastingEditor(fastingSession)}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
-            setShowCheckin(true);
+            openFastingEditor(fastingSession);
           }
         }}
         className="relative w-full text-left bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl shadow-sm p-5 border border-indigo-100 dark:border-indigo-800 overflow-hidden"
@@ -1366,7 +1488,13 @@ export default function Dashboard() {
                 {todayFastingHours} h
               </span>
             ) : (
-              <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">In Progress</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                {hasActiveFast
+                  ? fastingExceededHours > 0
+                    ? `+${formatRemainingHours(fastingExceededHours)}`
+                    : `${formatRemainingHours(fastingRemainingHours)} to go`
+                  : 'In Progress'}
+              </span>
             )}
             {!hasActiveFast && (
               <button
@@ -1437,7 +1565,7 @@ export default function Dashboard() {
             </button>
           ) : (
             <div className="rounded-xl px-3 py-2 text-sm font-semibold bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-center">
-              Fast started {formatCheckinTime(todayCheckin?.fastStartTime)}
+              Fast started {formatCheckinTime(fastingSession?.startTime)}
             </div>
           )}
           {showStartEatingButton ? (
@@ -1453,7 +1581,7 @@ export default function Dashboard() {
             </button>
           ) : (
             <div className="rounded-xl px-3 py-2 text-sm font-semibold bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-center">
-              First meal {formatCheckinTime(todayCheckin?.firstMealTime)}
+              First meal {formatCheckinTime(fastingSession?.endTime)}
             </div>
           )}
         </div>
@@ -1527,8 +1655,6 @@ export default function Dashboard() {
       </div>
 
       <RaceProgress checkins={checkins} raceGoal={raceGoal} daysUntil={daysUntil} weeksUntil={weeksUntil} />
-      <TripWidget trips={trips} userId={userId} onRefresh={loadData} />
-
       {/* Daily Progress Card */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5">
         <div className="flex justify-between items-center mb-4">
@@ -1622,9 +1748,9 @@ export default function Dashboard() {
                     </div>
                     <div className="w-7 shrink-0 text-right">
                       <div className="text-[11px] font-medium tabular-nums leading-tight text-right">
-                        <div className="text-white">{Math.round(log.fat)}</div>
-                        <div className="text-white">{Math.round(log.protein)}</div>
-                        <div className="text-white">{Math.round(log.netCarbs && log.netCarbs > 0 ? log.netCarbs : log.carbs)}</div>
+                        <div className="text-gray-900 dark:text-gray-100">{Math.round(log.fat)}</div>
+                        <div className="text-gray-900 dark:text-gray-100">{Math.round(log.protein)}</div>
+                        <div className="text-gray-900 dark:text-gray-100">{Math.round(log.netCarbs && log.netCarbs > 0 ? log.netCarbs : log.carbs)}</div>
                       </div>
                     </div>
                     <div className="w-3 shrink-0 -ml-1">

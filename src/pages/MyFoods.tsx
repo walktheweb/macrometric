@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getMyFoods, addMyFood, deleteMyFood, addLog, updateMyFoodAndLogs, updateLog, Food, getToday } from '../lib/api';
 import MaterialIcon from '../components/MaterialIcon';
+import { normalizeToDisplayDate, normalizeToIsoDate } from '../lib/date';
 
 type EditableField =
   | 'name'
@@ -822,9 +823,11 @@ export default function MyFoods() {
           </button>
           <div className="ml-auto flex items-center gap-2">
             <input
-              type="date"
-              value={logDate}
-              onChange={(e) => setLogDate(e.target.value)}
+              type="text"
+              inputMode="numeric"
+              value={normalizeToDisplayDate(logDate, normalizeToDisplayDate(getToday()))}
+              onChange={(e) => setLogDate(normalizeToIsoDate(e.target.value, logDate))}
+              placeholder="DD-MM-YYYY"
               className="px-2 py-1 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             />
             <button

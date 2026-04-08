@@ -1,4 +1,22 @@
-﻿# Release 1.2.3 (2026-04-01)
+# Release 1.2.4 (2026-04-08)
+
+## Highlights
+- Added fasting tracking across the app:
+  - Check-ins now capture fasting hours.
+  - Fasting flow now tracks both fasting start and first-meal times.
+  - Journey achievements and the persistent header were refined around the new fasting experience.
+- Fixed stale save-state issues:
+  - Dashboard food edits now refresh correctly.
+  - My Foods "today amount" edits now keep the latest saved state.
+- Prepared the Docker/Raspberry Pi release path:
+  - Production remains aligned with the Docker-based Pi deployment workflow.
+  - The header keeps showing both the app version and build identifier for release verification.
+
+## Notes
+- Release target: Docker / Raspberry Pi production deployment.
+- Validate with `docker compose up -d --build` for the production-like stack, or `npm run build` for the app build.
+
+# Release 1.2.3 (2026-04-01)
 
 ## Highlights
 - Improved Dashboard cards and interactions:
@@ -23,4 +41,3 @@
 ## Notes
 - Build validated with `npm run build`.
 - Bundle-size warning (>500 kB) remains unchanged and is non-blocking for this release.
-

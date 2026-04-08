@@ -33,6 +33,7 @@ export default function Layout() {
   const [headerContext, setHeaderContext] = useState<HeaderContextState>(null);
   const [hasTodayCheckin, setHasTodayCheckin] = useState(false);
   const isCheckinEditorOpen = !!headerContext?.buttons?.some((button) => button.id.includes('checkin'));
+  const isDialogMode = !!headerContext?.showBack || !!headerContext?.buttons?.length;
 
   const focusFirstInput = () => {
     if (!mainRef.current) return;
@@ -159,7 +160,7 @@ export default function Layout() {
                 <span className="text-white font-bold text-sm">M</span>
               </div>
             </button>
-            {navItems.map(({ to, label, icon }) => (
+            {!isDialogMode && navItems.map(({ to, label, icon }) => (
               <NavLink
                 key={to}
                 to={to}
@@ -201,7 +202,7 @@ export default function Layout() {
             >
               v{__APP_VERSION__} {__BUILD_VERSION__}
             </div>
-            {!isCheckinEditorOpen && (
+            {!isDialogMode && !isCheckinEditorOpen && (
               <button
                 type="button"
                 onClick={openCheckin}

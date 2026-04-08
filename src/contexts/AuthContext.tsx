@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { getCurrentUser } from '../lib/api';
 
 interface AuthContextType {
   userId: string | null;
@@ -17,7 +17,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkUser = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getCurrentUser();
       if (user) {
         setUserId(user.id);
         setEmail(user.email || null);
@@ -36,14 +36,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     checkUser();
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      const user = session?.user || null;
-      setUserId(user?.id || null);
-      setEmail(user?.email || null);
-      setLoading(false);
-    });
+    const listener = () => {
+      checkUser();
+    };
+    window.addEventListener('auth-change', listener);
     return () => {
-      authListener.subscription.unsubscribe();
+      window.removeEventListener('auth-change', listener);
     };
   }, []);
 

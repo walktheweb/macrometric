@@ -1,85 +1,110 @@
 # MacroMetric
 
-A simple daily food macro tracker - local-only version. No account, no server, just open and use.
+MacroMetric now has two supported local workflows:
 
-## Features
+- `Fast dev`: frontend and API run on your machine, Postgres stays in Docker
+- `Production-like test`: frontend, API, Postgres, and Caddy all run in Docker
 
-- **Quick-Add Daily Log** - Log foods to breakfast, lunch, dinner, or snacks
-- **Food Search** - Search millions of foods from OpenFoodFacts (free, no API key needed)
-- **Barcode Scanner** - Scan packaged foods to auto-fill nutrition info
-- **Quick-Add Presets** - Save favorite foods for one-tap logging
-- **Macro Dashboard** - Visual progress bars for protein/carbs/fat/calories
-- **Goals Tracking** - Set and track daily macro targets
-- **History View** - Browse past days and trends
-- **Data Export/Import** - Backup and restore your data as JSON
+The production-like Docker stack remains the release path for Raspberry Pi. The fast dev lane is for daily coding and debugging.
 
-## Getting Started
+## Requirements
 
-```bash
-npm install
+- Node.js 20+
+- npm
+- Docker Desktop
+
+## Fast Dev
+
+This is the recommended daily development workflow.
+
+### 1. Create local env files
+
+Copy the examples:
+
+```powershell
+Copy-Item .env.local.example .env.local
+Copy-Item .env.api.local.example .env.api.local
+```
+
+These defaults point the frontend to `http://localhost:3000/api` and the API to the Docker Postgres instance on `localhost:5432`.
+For local dev, the frontend now uses Vite's `/api` proxy to the local API on `127.0.0.1:3000`, so browser auth and cookies behave like a same-origin app.
+
+### 2. Start only Postgres in Docker
+
+```powershell
+npm run dev:db
+```
+
+This uses `docker-compose.yml` plus `docker-compose.dev.yml`, which publishes Postgres on `localhost:5432` without changing the normal full-stack Docker flow.
+
+### 3. Run the API locally
+
+```powershell
+npm run dev:api
+```
+
+API endpoints:
+
+- `http://localhost:3000/api/health`
+- `http://localhost:3000/api/openapi.json`
+- `http://localhost:3000/api/docs`
+
+### 4. Run the frontend locally
+
+In a second terminal:
+
+```powershell
 npm run dev
 ```
 
-Open **http://localhost:5173** in your browser.
+Open:
 
-### Access from Your Phone
+- `http://localhost:5173`
 
-1. Make sure your phone is on the same WiFi network as your PC
-2. Find your PC's local IP address:
-   - Windows: `ipconfig` → look for "IPv4 Address"
-3. Run: `npm run dev:host`
-4. On your phone, open: `http://YOUR_PC_IP:5173`
+### 5. Stop the dev database
 
-## Data Storage
-
-All data is stored locally in your browser using localStorage. This means:
-- No account needed
-- Works offline
-- Data stays on your device
-
-To backup your data:
-1. Go to Settings → Export Data
-2. Save the JSON file
-
-To restore on another device:
-1. Go to Settings → Import Data
-2. Select your backup file
-
-## Food Database
-
-MacroMetric uses [OpenFoodFacts](https://world.openfoodfacts.org/) - a free, open-source food database with over 2 million products. No API key or registration required!
-
-## Default Goals
-
-- Calories: 2000 kcal
-- Protein: 150g
-- Carbs: 250g
-- Fat: 65g
-
-Change these in Settings to match your personal targets.
-
-## Project Structure
-
-```
-MacroMetric/
-├── src/
-│   ├── components/     # UI components (Layout, BarcodeScanner)
-│   ├── pages/          # Page components (Dashboard, FoodLog, etc.)
-│   ├── lib/            # API functions (localStorage + OpenFoodFacts)
-│   └── App.tsx         # Main app with routing
-├── public/             # Static assets
-├── index.html          # Entry HTML
-└── package.json
+```powershell
+npm run dev:db:down
 ```
 
-## Build for Production
+## Production-Like Docker Test
 
-```bash
-npm run build
+Use this when validating a release candidate or rehearsing the Raspberry Pi deployment:
+
+```powershell
+docker compose up -d --build
 ```
 
-The production build will be in `dist/`. You can host it anywhere (GitHub Pages, Netlify, Vercel, etc.).
+Open:
 
-## License
+- `http://localhost/`
+- `http://localhost/api/health`
+- `http://localhost/api/docs/`
 
-MIT
+Stop it with:
+
+```powershell
+docker compose down
+```
+
+## Data Notes
+
+Fast dev reuses the same Docker Postgres service definition and schema as the production-like stack, but it connects through `localhost:5432`.
+
+By default, this setup reuses the existing Postgres volume. That is convenient and fast, but it also means:
+
+- fast dev and Docker test can see the same database state
+- test imports or edits can affect the shared local data
+
+If you later want a stricter separation, the next step would be a dedicated dev database name or dev-only volume. That is not required for this first fast-dev setup.
+
+## Useful Commands
+
+```powershell
+npm install
+npm run dev:db
+npm run dev:api
+npm run dev
+docker compose up -d --build
+docker compose down
+```

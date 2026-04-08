@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Checkin, RaceGoal } from '../lib/api';
 import { formatDateDDMMYYYY } from '../lib/date';
 import MaterialIcon from './MaterialIcon';
@@ -11,20 +11,26 @@ interface RaceProgressProps {
 }
 
 export default function RaceProgress({ checkins, raceGoal, daysUntil, weeksUntil }: RaceProgressProps) {
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const { currentWeight, weeklyRate, projectedWeight, progress, usingGoalProjection } = useMemo(() => {
-    const weightsWithDate = checkins
+    const allWeightsWithDate = checkins
       .filter((c) => typeof c.weight === 'number' && Number.isFinite(c.weight) && (c.weight as number) > 0 && (c.weight as number) < 400)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    const current = weightsWithDate[0]?.weight ?? null;
-    const startWeight = weightsWithDate[weightsWithDate.length - 1]?.weight ?? current ?? 0;
+    const weightsWithDate = raceGoal.startDate
+      ? allWeightsWithDate.filter((entry) => new Date(entry.date).getTime() >= new Date(raceGoal.startDate as string).getTime())
+      : allWeightsWithDate;
+
+    const relevantWeights = weightsWithDate.length > 0 ? weightsWithDate : allWeightsWithDate;
+    const current = allWeightsWithDate[0]?.weight ?? null;
+    const startWeight = relevantWeights[relevantWeights.length - 1]?.weight ?? current ?? 0;
 
     let rate = 0;
     let hasReliableTrend = false;
-    if (weightsWithDate.length >= 2 && current !== null) {
+    if (relevantWeights.length >= 2 && current !== null) {
       const daysDiff = Math.max(
         1,
-        (new Date(weightsWithDate[0].date).getTime() - new Date(weightsWithDate[weightsWithDate.length - 1].date).getTime()) /
+        (new Date(relevantWeights[0].date).getTime() - new Date(relevantWeights[relevantWeights.length - 1].date).getTime()) /
           (1000 * 60 * 60 * 24)
       );
       const weeksDiff = daysDiff / 7;
@@ -66,23 +72,23 @@ export default function RaceProgress({ checkins, raceGoal, daysUntil, weeksUntil
     return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
   };
 
-  const getStatusText = () => {
-    if (weeklyRate >= raceGoal.weeklyTarget) return 'ON TRACK';
-    if (weeklyRate >= raceGoal.weeklyTarget * 0.6) return 'SLIGHTLY BEHIND';
-    return 'BEHIND';
+  const getPaceLabel = () => {
+    if (weeklyRate >= raceGoal.weeklyTarget) return 'On track';
+    if (weeklyRate >= raceGoal.weeklyTarget * 0.6) return 'Close';
+    return 'Behind';
   };
 
   if (!currentWeight) {
     return (
-      <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-5 text-white">
-        <div className="flex items-center gap-3 mb-4">
-          <MaterialIcon name="target" className="text-[28px]" />
+      <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-4 text-white">
+        <div className="flex items-center gap-3">
+          <MaterialIcon name="target" className="text-2xl" />
           <div>
             <div className="font-semibold">{raceGoal.eventName ? `${raceGoal.eventName}: ${formatDate(raceGoal.raceDate)}` : formatDate(raceGoal.raceDate)}</div>
             <div className="text-sm opacity-80">{daysUntil} days to go</div>
           </div>
         </div>
-        <div className="bg-white/20 rounded-xl p-4 text-center">
+        <div className="mt-3 bg-white/15 rounded-xl px-4 py-3 text-center">
           <div className="text-sm opacity-80 mb-1">Log your weight in Check-in</div>
           <div className="font-medium">to track event progress</div>
         </div>
@@ -90,48 +96,69 @@ export default function RaceProgress({ checkins, raceGoal, daysUntil, weeksUntil
     );
   }
 
-  const totalWeeks = Math.max(1, Math.ceil((new Date(raceGoal.raceDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 7)));
-  const weeksPassed = Math.max(0, totalWeeks - Math.ceil(weeksUntil));
-  const weekDots = Array.from({ length: Math.min(8, totalWeeks) }, (_, i) => i < weeksPassed);
-
   return (
-    <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-5 text-white">
-      <div className="flex items-center gap-3 mb-4">
-        <MaterialIcon name="target" className="text-[28px]" />
-        <div>
-          <div className="font-semibold">{raceGoal.eventName ? `${raceGoal.eventName}: ${formatDate(raceGoal.raceDate)}` : formatDate(raceGoal.raceDate)}</div>
-          <div className="text-sm opacity-80">{daysUntil} days to go</div>
+    <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl text-white overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setIsCollapsed((value) => !value)}
+        className="w-full p-4 text-left"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <MaterialIcon name="target" className="text-2xl shrink-0" />
+            <div className="min-w-0">
+              <div className="font-semibold truncate">{raceGoal.eventName ? `${raceGoal.eventName}: ${formatDate(raceGoal.raceDate)}` : formatDate(raceGoal.raceDate)}</div>
+              <div className="text-sm opacity-80">{daysUntil} days to go</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <div className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusColor()}`}>
+              {getPaceLabel()}
+            </div>
+            <MaterialIcon name={isCollapsed ? 'chevron_right' : 'expand_more'} className="text-xl opacity-90" />
+          </div>
         </div>
-      </div>
+        <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.18em] opacity-75">Goal</div>
+            <div className="font-semibold">{currentWeight}kg -&gt; {raceGoal.targetWeight}kg</div>
+          </div>
+          {projectedWeight !== null && (
+            <div className="text-right">
+              <div className="text-[11px] uppercase tracking-[0.18em] opacity-75">{usingGoalProjection ? 'Projected goal' : 'Projected'}</div>
+              <div className="font-semibold">{projectedWeight.toFixed(1)}kg</div>
+            </div>
+          )}
+        </div>
 
-      <div className="bg-white/10 rounded-xl p-4 mb-4">
-        <div className="flex justify-between text-sm mb-2">
-          <span>Weight Progress</span>
-          <span>{currentWeight}kg -&gt; {raceGoal.targetWeight}kg</span>
-        </div>
-        <div className="h-3 bg-white/20 rounded-full overflow-hidden">
+        <div className="mt-3 h-2 bg-white/20 rounded-full overflow-hidden">
           <div className="h-full bg-white rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
         </div>
-        <div className="flex items-center gap-1 mt-3">
-          {weekDots.map((filled, i) => (
-            <div key={i} className={`w-4 h-4 rounded-full ${filled ? 'bg-white' : 'bg-white/30'}`} />
-          ))}
-          <span className="text-xs ml-2 opacity-80">Week {weeksPassed + 1}/{totalWeeks}</span>
+        <div className="mt-2 flex items-center justify-between text-xs opacity-80">
+          <span>{progress.toFixed(0)}% to target</span>
+          <span>{Math.max(0, Math.ceil(weeksUntil))} weeks left</span>
         </div>
-      </div>
+      </button>
 
-      <div className={`rounded-xl p-3 flex items-center justify-between ${getStatusColor()}`}>
-        <div>
-          <div className="font-semibold text-sm">{getStatusText()}</div>
-          <div className="text-xs opacity-80">{weeklyRate.toFixed(1)} kg/week (target: {raceGoal.weeklyTarget})</div>
-        </div>
-        {projectedWeight !== null && (
-          <div className="text-right">
-            <div className="text-xs opacity-80">{usingGoalProjection ? 'Projected (goal)' : 'Projected'}</div>
-            <div className="font-semibold">{projectedWeight.toFixed(1)}kg</div>
+      {!isCollapsed && (
+        <div className="px-4 pb-4">
+          <div className="border-t border-white/15 pt-3">
+            {raceGoal.startDate && (
+              <div className="mb-3 text-xs opacity-80">Started on {formatDate(raceGoal.startDate)}</div>
+            )}
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="rounded-xl bg-white/10 px-3 py-2">
+                <div className="text-[11px] uppercase tracking-[0.18em] opacity-75">Current pace</div>
+                <div className="font-semibold">{weeklyRate.toFixed(1)} kg/week</div>
+              </div>
+              <div className="rounded-xl bg-white/10 px-3 py-2">
+                <div className="text-[11px] uppercase tracking-[0.18em] opacity-75">Target pace</div>
+                <div className="font-semibold">{raceGoal.weeklyTarget.toFixed(1)} kg/week</div>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

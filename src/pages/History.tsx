@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { getHistory, DayLog, getCheckins, getRaceGoal, RaceGoal, deleteCheckin, clearCheckinFasting, Checkin, getEventGoals, EventGoalItem, getMilestones, Milestone, syncAutoWeightMilestones } from '../lib/api';
+import { getHistory, DayLog, getCheckins, getRaceGoal, RaceGoal, deleteCheckin, Checkin, getEventGoals, EventGoalItem, getMilestones, Milestone, syncAutoWeightMilestones, getFastingSessions, deleteFastingSession, FastingSession } from '../lib/api';
 import { formatDateDDMMYYYY } from '../lib/date';
 import MaterialIcon from '../components/MaterialIcon';
 
@@ -68,17 +68,35 @@ function getFastingHours(fastStartTime?: string | null, firstMealTime?: string |
   return Math.round(((mealTotal - startTotal) / 60) * 10) / 10;
 }
 
+function getElapsedFastingHours(date?: string | null, fastStartTime?: string | null, now = new Date()) {
+  if (!date || !fastStartTime) return null;
+  const normalizedDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '';
+  if (!normalizedDate) return null;
+  const [hours, minutes] = fastStartTime.split(':').map(Number);
+  if (![hours, minutes].every(Number.isFinite)) return null;
+
+  const startedAt = new Date(`${normalizedDate}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`);
+  if (Number.isNaN(startedAt.getTime())) return null;
+
+  const diffMs = now.getTime() - startedAt.getTime();
+  if (diffMs < 0) return 0;
+  return Math.round((diffMs / (1000 * 60 * 60)) * 10) / 10;
+}
+
 export default function History() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { userId, loading: authLoading } = useAuth();
   const [history, setHistory] = useState<Record<string, DayLog>>({});
   const [checkins, setCheckins] = useState<Checkin[]>([]);
   const [allCheckins, setAllCheckins] = useState<Checkin[]>([]);
+  const [fastingSessions, setFastingSessions] = useState<FastingSession[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [eventGoals, setEventGoals] = useState<EventGoalItem[]>([]);
   const [raceGoal, setRaceGoal] = useState<RaceGoal | null>(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(7);
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const initialTab = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState<'food' | 'checkin' | 'fasting' | 'goals' | 'milestones'>(
     initialTab === 'checkin' || initialTab === 'fasting' || initialTab === 'goals' || initialTab === 'milestones' ? initialTab : 'food'
@@ -91,24 +109,36 @@ export default function History() {
     }
   }, [userId, days]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowTick(Date.now()), 60000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const loadData = async () => {
     if (!userId) return;
     setLoading(true);
-    await syncAutoWeightMilestones(userId);
-    const [historyData, checkinsData, raceGoalData, eventGoalsData, milestonesData] = await Promise.all([
-      getHistory(userId, days),
-      getCheckins(userId),
-      getRaceGoal(userId),
-      getEventGoals(userId),
-      getMilestones(userId),
-    ]);
-    setHistory(historyData);
-    setAllCheckins(checkinsData);
-    setCheckins(checkinsData.slice(0, 30));
-    setRaceGoal(raceGoalData);
-    setEventGoals(eventGoalsData);
-    setMilestones(milestonesData);
-    setLoading(false);
+    try {
+      await syncAutoWeightMilestones(userId);
+      const [historyData, checkinsData, fastingData, raceGoalData, eventGoalsData, milestonesData] = await Promise.all([
+        getHistory(userId, days),
+        getCheckins(userId),
+        getFastingSessions(userId),
+        getRaceGoal(userId),
+        getEventGoals(userId),
+        getMilestones(userId),
+      ]);
+      setHistory(historyData);
+      setAllCheckins(checkinsData);
+      setCheckins(checkinsData.slice(0, 30));
+      setFastingSessions(fastingData);
+      setRaceGoal(raceGoalData);
+      setEventGoals(eventGoalsData);
+      setMilestones(milestonesData);
+    } catch (error) {
+      console.error('Failed to load history', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDeleteCheckin = async (checkinId: string) => {
@@ -118,11 +148,15 @@ export default function History() {
     loadData();
   };
 
-  const handleDeleteFasting = async (checkinId: string) => {
+  const handleDeleteFasting = async (sessionId: string) => {
     if (!userId) return;
-    if (!confirm('Delete fasting data from this check-in?')) return;
-    await clearCheckinFasting(userId, checkinId);
+    if (!confirm('Delete this fasting session?')) return;
+    await deleteFastingSession(userId, sessionId);
     loadData();
+  };
+
+  const handleEditFasting = (sessionId: string) => {
+    navigate(`/?editFasting=${encodeURIComponent(sessionId)}&from=history`);
   };
 
   const toggleFoodDate = (dateStr: string) => {
@@ -146,6 +180,8 @@ export default function History() {
     return formatDateDDMMYYYY(date.toISOString().slice(0, 10));
   };
 
+
+
   if (authLoading || loading) {
     return (
       <div className="flex justify-center py-12">
@@ -168,16 +204,30 @@ export default function History() {
     .filter((item) => typeof item.ketones === 'number' && Number.isFinite(item.ketones))
     .slice()
     .sort((a, b) => a.date.localeCompare(b.date));
-  const ketosisReachedEntry = ketosisEntries.find((item) => (item.ketones || 0) > 0.5) || null;
-  const ketoDone = !!ketosisReachedEntry;
+  const ketosisMilestones = ketosisEntries
+    .filter((item) => (item.ketones || 0) >= 0.5)
+    .reduce<Record<string, Checkin>>((acc, item) => {
+      const existing = acc[item.date];
+      if (!existing) {
+        acc[item.date] = item;
+        return acc;
+      }
+      const existingKetones = existing.ketones || 0;
+      const nextKetones = item.ketones || 0;
+      if (nextKetones > existingKetones) {
+        acc[item.date] = item;
+        return acc;
+      }
+      if (nextKetones === existingKetones && (item.createdAt || 0) > (existing.createdAt || 0)) {
+        acc[item.date] = item;
+      }
+      return acc;
+    }, {});
+  const ketoDone = Object.keys(ketosisMilestones).length > 0;
   const achievedEventGoals = eventGoals.filter((goal) => {
     const eventDate = new Date(`${goal.raceDate}T00:00:00`);
     return eventDate.getTime() <= new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
   });
-  const achievedMilestones = milestones
-    .filter((item) => item.done)
-    .slice()
-    .sort((a, b) => b.date.localeCompare(a.date));
   const weightedAsc = allCheckins
     .filter((item) => typeof item.weight === 'number' && Number.isFinite(item.weight))
     .slice()
@@ -231,17 +281,61 @@ export default function History() {
   const allMilestones = [...milestones, ...fallbackMilestones.filter((fallback) => !milestones.some((item) => item.title === fallback.title && item.date === fallback.date))]
     .slice()
     .sort((a, b) => {
-      const createdDiff = (b.createdAt || 0) - (a.createdAt || 0);
-      if (createdDiff !== 0) return createdDiff;
-      return b.date.localeCompare(a.date);
+      const byDate = b.date.localeCompare(a.date);
+      if (byDate !== 0) return byDate;
+      return (b.createdAt || 0) - (a.createdAt || 0);
     });
-  const fastingEntries = allCheckins
-    .filter((item) => item.fastStartTime || item.firstMealTime)
+  const milestoneHistoryItems = [
+    ...allMilestones.map((item) => ({
+      id: item.id,
+      date: item.date,
+      createdAt: item.createdAt || 0,
+      icon: (item.notes || '').startsWith('auto:weight') ? 'monitor_weight' : 'emoji_events',
+      iconClass: 'text-green-600 dark:text-green-400',
+      title: item.title,
+      status: item.done ? 'Done' : 'Planned',
+      statusClass: item.done ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400',
+      subtitle: `${item.done ? 'Reached' : 'Target'}: ${formatDateDDMMYYYY(item.date)}`,
+      meta: formatCreatedAtDate(item.createdAt) ? `Added: ${formatCreatedAtDate(item.createdAt)}` : '',
+      notes: item.notes && !(item.notes || '').startsWith('auto:weight') ? item.notes : '',
+    })),
+    ...achievedEventGoals.map((goal) => ({
+      id: `event-${goal.id}`,
+      date: goal.raceDate,
+      createdAt: goal.createdAt || 0,
+      icon: 'flag',
+      iconClass: 'text-green-600 dark:text-green-400',
+      title: goal.eventName || 'Event goal reached',
+      status: 'Done',
+      statusClass: 'text-green-600 dark:text-green-400',
+      subtitle: formatDateDDMMYYYY(goal.raceDate),
+      meta: '',
+      notes: '',
+    })),
+    ...Object.values(ketosisMilestones).map((entry) => ({
+      id: `ketosis-${entry.date}`,
+      date: entry.date,
+      createdAt: entry.createdAt || 0,
+      icon: 'local_fire_department',
+      iconClass: 'text-orange-500 dark:text-orange-400',
+      title: 'Ketosis >= 0.5',
+      status: 'Done',
+      statusClass: 'text-green-600 dark:text-green-400',
+      subtitle: `${entry.ketones} on ${formatDateDDMMYYYY(entry.date)}`,
+      meta: '',
+      notes: '',
+    })),
+  ].sort((a, b) => {
+    const byDate = b.date.localeCompare(a.date);
+    if (byDate !== 0) return byDate;
+    return (b.createdAt || 0) - (a.createdAt || 0);
+  });
+  const fastingEntries = fastingSessions
     .slice()
     .sort((a, b) => {
       const byDate = b.date.localeCompare(a.date);
       if (byDate !== 0) return byDate;
-      const byTime = (b.checkinTime || '').localeCompare(a.checkinTime || '');
+      const byTime = (b.startTime || '').localeCompare(a.startTime || '');
       if (byTime !== 0) return byTime;
       return (b.createdAt || 0) - (a.createdAt || 0);
     });
@@ -401,7 +495,10 @@ export default function History() {
                   className="block bg-purple-50 dark:bg-purple-900/20 rounded-xl shadow-sm overflow-hidden border border-purple-100 dark:border-purple-800"
                 >
                   <div className="px-4 py-3 bg-purple-100 dark:bg-purple-900/50 border-b border-purple-200 dark:border-purple-800 flex justify-between items-center">
-                    <div className="font-medium text-purple-800 dark:text-purple-200">{formatDate(checkin.date, checkin.checkinTime)}</div>
+                    <div className="grid grid-cols-[auto_auto] gap-x-3 items-center font-medium text-purple-800 dark:text-purple-200">
+                      <div className="tabular-nums">{formatDateDDMMYYYY(checkin.date)}</div>
+                      <div className="tabular-nums min-w-[3.5rem] text-right">{checkin.checkinTime ? formatTimeWithoutSeconds(checkin.checkinTime) : ''}</div>
+                    </div>
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -419,28 +516,10 @@ export default function History() {
                   
                   <div className="p-4">
                     <div className="grid grid-cols-4 gap-2">
-                      {checkin.fastStartTime && (
-                        <div className="text-center">
-                          <div className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{formatTimeWithoutSeconds(checkin.fastStartTime)}</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">fast start</div>
-                        </div>
-                      )}
-                      {checkin.firstMealTime && (
-                        <div className="text-center">
-                          <div className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{formatTimeWithoutSeconds(checkin.firstMealTime)}</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">first meal</div>
-                        </div>
-                      )}
                       {checkin.steps && (
                         <div className="text-center">
                           <div className="text-lg font-bold text-green-600 dark:text-green-400">{checkin.steps}</div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">steps</div>
-                        </div>
-                      )}
-                      {getFastingHours(checkin.fastStartTime, checkin.firstMealTime) !== null && (
-                        <div className="text-center">
-                          <div className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{getFastingHours(checkin.fastStartTime, checkin.firstMealTime)}</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">fast h</div>
                         </div>
                       )}
                       {checkin.weight && (
@@ -492,11 +571,6 @@ export default function History() {
                         </div>
                       )}
                     </div>
-                    {checkin.fastStartTime && !checkin.firstMealTime && (
-                      <div className="mt-3 pt-3 border-t border-purple-100 dark:border-purple-800 text-sm font-medium text-indigo-600 dark:text-indigo-300">
-                        Fasting started
-                      </div>
-                    )}
                     {checkin.notes && (
                       <div className="mt-3 pt-3 border-t border-purple-100 dark:border-purple-800">
                         <div className="text-sm text-gray-600 dark:text-gray-300 italic">{checkin.notes}</div>
@@ -550,17 +624,27 @@ export default function History() {
           ) : (
             <div className="space-y-3">
               {fastingEntries.map((entry) => {
-                const fastingHours = getFastingHours(entry.fastStartTime, entry.firstMealTime);
+                const fastingHours = getFastingHours(entry.startTime, entry.endTime);
+                const liveFastingHours = fastingHours ?? getElapsedFastingHours(entry.date, entry.startTime, new Date(nowTick));
                 const isCompleted = fastingHours !== null;
                 const isSuccessful = (fastingHours || 0) >= 16;
                 return (
                   <div
                     key={`fasting-${entry.id}`}
-                    className="bg-indigo-50 dark:bg-indigo-900/20 rounded-xl shadow-sm overflow-hidden border border-indigo-100 dark:border-indigo-800"
+                    className="bg-indigo-50 dark:bg-indigo-900/20 rounded-xl shadow-sm overflow-hidden border border-indigo-100 dark:border-indigo-800 cursor-pointer"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleEditFasting(entry.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        handleEditFasting(entry.id);
+                      }
+                    }}
                   >
                     <div className="px-4 py-3 bg-indigo-100 dark:bg-indigo-900/50 border-b border-indigo-200 dark:border-indigo-800 flex items-center justify-between gap-3">
                       <div className="font-medium text-indigo-800 dark:text-indigo-200">
-                        {formatDate(entry.date, entry.checkinTime)}
+                        {formatDate(entry.date, entry.endTime || entry.startTime)}
                       </div>
                       <div className="flex items-center gap-2">
                         {isCompleted ? (
@@ -572,7 +656,10 @@ export default function History() {
                         )}
                         <button
                           type="button"
-                          onClick={() => handleDeleteFasting(entry.id)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleDeleteFasting(entry.id);
+                          }}
                           className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900 rounded-lg"
                           title="Delete"
                           aria-label="Delete fasting entry"
@@ -585,28 +672,23 @@ export default function History() {
                       <div className="grid grid-cols-3 gap-3">
                         <div className="text-center">
                           <div className="text-lg font-bold text-indigo-600 dark:text-indigo-400">
-                            {formatTimeWithoutSeconds(entry.fastStartTime) || '--:--'}
+                            {formatTimeWithoutSeconds(entry.startTime) || '--:--'}
                           </div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">Fast start</div>
                         </div>
                         <div className="text-center">
                           <div className="text-lg font-bold text-indigo-600 dark:text-indigo-400">
-                            {formatTimeWithoutSeconds(entry.firstMealTime) || '--:--'}
+                            {formatTimeWithoutSeconds(entry.endTime) || '--:--'}
                           </div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">First meal</div>
                         </div>
                         <div className="text-center">
                           <div className={`text-lg font-bold ${isCompleted ? (isSuccessful ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400') : 'text-gray-900 dark:text-gray-100'}`}>
-                            {fastingHours !== null ? `${fastingHours} h` : '--'}
+                            {liveFastingHours !== null ? `${liveFastingHours} h` : '--'}
                           </div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">Duration</div>
                         </div>
                       </div>
-                      {entry.notes && (
-                        <div className="mt-3 pt-3 border-t border-indigo-100 dark:border-indigo-800 text-sm text-gray-600 dark:text-gray-300">
-                          {entry.notes}
-                        </div>
-                      )}
                     </div>
                   </div>
                 );
@@ -621,63 +703,33 @@ export default function History() {
           <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-xl shadow-sm p-4 border border-indigo-100 dark:border-indigo-800">
             <div className="text-sm font-semibold text-indigo-700 dark:text-indigo-300 mb-3">Milestones</div>
             <div className="space-y-2">
-              {allMilestones.map((item) => (
+              {milestoneHistoryItems.map((item) => (
                 <div key={item.id} className="rounded-lg border border-green-200 dark:border-green-800 bg-white/80 dark:bg-green-950/20 p-3">
                   <div className="flex items-center justify-between gap-2 text-sm">
                     <div className="inline-flex items-center gap-2 text-gray-800 dark:text-gray-100">
                       <MaterialIcon
-                        name={(item.notes || '').startsWith('auto:weight') ? 'monitor_weight' : 'emoji_events'}
-                        className="text-[18px] text-green-600 dark:text-green-400"
+                        name={item.icon}
+                        className={`text-[18px] ${item.iconClass}`}
                       />
                       {item.title}
                     </div>
-                    <span className={`font-semibold ${item.done ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                      {item.done ? 'Done' : 'Planned'}
+                    <span className={`font-semibold ${item.statusClass}`}>
+                      {item.status}
                     </span>
                   </div>
-                  <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">
-                    {item.done ? 'Reached' : 'Target'}: {formatDateDDMMYYYY(item.date)}
-                  </div>
-                  {formatCreatedAtDate(item.createdAt) && (
+                  <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">{item.subtitle}</div>
+                  {item.meta && (
                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      Added: {formatCreatedAtDate(item.createdAt)}
+                      {item.meta}
                     </div>
                   )}
-                  {item.notes && !(item.notes || '').startsWith('auto:weight') ? (
+                  {item.notes ? (
                     <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">{item.notes}</div>
                   ) : null}
                 </div>
               ))}
 
-              {achievedEventGoals.map((goal) => (
-                <div key={`event-${goal.id}`} className="rounded-lg border border-green-200 dark:border-green-800 bg-white/80 dark:bg-green-950/20 p-3">
-                  <div className="flex items-center justify-between gap-2 text-sm">
-                    <div className="inline-flex items-center gap-2 text-gray-800 dark:text-gray-100">
-                      <MaterialIcon name="flag" className="text-[18px] text-green-600 dark:text-green-400" />
-                      {goal.eventName || 'Event goal reached'}
-                    </div>
-                    <span className="text-green-600 dark:text-green-400 font-semibold">Done</span>
-                  </div>
-                  <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">{formatDateDDMMYYYY(goal.raceDate)}</div>
-                </div>
-              ))}
-
-              {ketoDone && ketosisReachedEntry && (
-                <div className="rounded-lg border border-green-200 dark:border-green-800 bg-white/80 dark:bg-green-950/20 p-3">
-                  <div className="flex items-center justify-between gap-2 text-sm">
-                    <div className="inline-flex items-center gap-2 text-gray-800 dark:text-gray-100">
-                      <MaterialIcon name="local_fire_department" className="text-[18px] text-orange-500 dark:text-orange-400" />
-                      Hit ketosis {'>'} 0.5
-                    </div>
-                    <span className="text-green-600 dark:text-green-400 font-semibold">Done</span>
-                  </div>
-                  <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">
-                    {ketosisReachedEntry.ketones} on {formatDateDDMMYYYY(ketosisReachedEntry.date)}
-                  </div>
-                </div>
-              )}
-
-              {allMilestones.length === 0 && achievedEventGoals.length === 0 && !ketoDone && (
+              {milestoneHistoryItems.length === 0 && !ketoDone && (
                 <div className="text-sm text-gray-500 dark:text-gray-400">No milestones yet.</div>
               )}
             </div>

@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { getAuthStorageMode, setAuthStorageMode, supabase } from '../lib/supabase';
+import { signIn, signUp } from '../lib/api';
 import MaterialIcon from '../components/MaterialIcon';
 
 const getVersionString = () => {
   return '1.2.1';
 };
 
-export default function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
+export default function LoginScreen() {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -15,7 +15,7 @@ export default function LoginScreen({ onAuthenticated }: { onAuthenticated: () =
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(getAuthStorageMode() === 'local');
+  const [rememberMe, setRememberMe] = useState(true);
 
   const validate = () => {
     if (!email.trim() || !password.trim()) {
@@ -42,42 +42,13 @@ export default function LoginScreen({ onAuthenticated }: { onAuthenticated: () =
     setLoading(true);
 
     try {
-      setAuthStorageMode(rememberMe ? 'local' : 'session');
-
       if (mode === 'signin') {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
-
-        if (signInError) {
-          setError(signInError.message || 'Login failed');
-          setLoading(false);
-          return;
-        }
-
-        onAuthenticated();
+        await signIn(email.trim(), password, rememberMe);
       } else {
-        const { data, error: signUpError } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-        });
-
-        if (signUpError) {
-          setError(signUpError.message || 'Sign up failed');
-          setLoading(false);
-          return;
-        }
-
-        if (data.session?.user) {
-          onAuthenticated();
-        } else {
-          setMessage('Account created. Check your email to confirm, then log in.');
-          setMode('signin');
-        }
+        await signUp(email.trim(), password, rememberMe);
       }
-    } catch {
-      setError('Connection error. Please try again.');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Connection error. Please try again.');
     }
 
     setLoading(false);

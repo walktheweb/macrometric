@@ -33,6 +33,17 @@ const normalizeToDisplayDate = (value?: string | null): string => {
   return formatDateDDMMYYYY(normalizeToIsoDate(value));
 };
 
+const normalizeOptionalToIsoDate = (value?: string | null): string => {
+  if (!value?.trim()) return '';
+  const normalized = normalizeToIsoDate(value);
+  return normalized || '';
+};
+
+const normalizeOptionalToDisplayDate = (value?: string | null): string => {
+  const normalized = normalizeOptionalToIsoDate(value);
+  return normalized ? formatDateDDMMYYYY(normalized) : '';
+};
+
 interface CollapsibleSectionProps {
   title: string;
   icon: string;
@@ -90,6 +101,7 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   
   const [raceDate, setRaceDate] = useState('23-05-2026');
+  const [raceStartDate, setRaceStartDate] = useState('');
   const [raceTargetWeight, setRaceTargetWeight] = useState(80);
   const [raceWeeklyTarget, setRaceWeeklyTarget] = useState(0.5);
   const [daysUntilRace, setDaysUntilRace] = useState(57);
@@ -97,6 +109,7 @@ export default function Settings() {
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [goalFormName, setGoalFormName] = useState('');
+  const [goalFormStartDate, setGoalFormStartDate] = useState('');
   const [goalFormDate, setGoalFormDate] = useState('23-05-2026');
   const [goalFormTargetWeight, setGoalFormTargetWeight] = useState(80);
   const [goalFormWeeklyTarget, setGoalFormWeeklyTarget] = useState(0.5);
@@ -185,12 +198,14 @@ export default function Settings() {
     }
     
     setRaceDate(normalizeToDisplayDate(raceGoalData.raceDate));
+    setRaceStartDate(normalizeOptionalToDisplayDate(raceGoalData.startDate));
     setRaceTargetWeight(raceGoalData.targetWeight);
     setRaceWeeklyTarget(raceGoalData.weeklyTarget);
     setEventGoals(eventGoalsData);
     setReleaseNotes(releaseNotesData.length > 0 ? releaseNotesData : releaseNotes);
     setFeatureRequests(featureRequestsData);
     setGoalFormName('');
+    setGoalFormStartDate(normalizeOptionalToDisplayDate(raceGoalData.startDate));
     setGoalFormDate(normalizeToDisplayDate(raceGoalData.raceDate));
     setGoalFormTargetWeight(raceGoalData.targetWeight);
     setGoalFormWeeklyTarget(raceGoalData.weeklyTarget);
@@ -209,6 +224,7 @@ export default function Settings() {
       getDaysUntilRace(userId),
     ]);
     setRaceDate(normalizeToDisplayDate(raceGoalData.raceDate));
+    setRaceStartDate(normalizeOptionalToDisplayDate(raceGoalData.startDate));
     setRaceTargetWeight(raceGoalData.targetWeight);
     setRaceWeeklyTarget(raceGoalData.weeklyTarget);
     setEventGoals(eventGoalsData);
@@ -245,6 +261,7 @@ export default function Settings() {
     setEventGoalError('');
     setEditingGoalId(goal.id);
     setGoalFormName(goal.eventName || '');
+    setGoalFormStartDate(normalizeOptionalToDisplayDate(goal.startDate));
     setGoalFormDate(normalizeToDisplayDate(goal.raceDate));
     setGoalFormTargetWeight(goal.targetWeight);
     setGoalFormWeeklyTarget(goal.weeklyTarget);
@@ -258,6 +275,7 @@ export default function Settings() {
       if (next) {
         setEditingGoalId(null);
         setGoalFormName('');
+        setGoalFormStartDate(raceStartDate || normalizeToDisplayDate(new Date().toISOString().slice(0, 10)));
         setGoalFormDate(normalizeToDisplayDate(raceDate));
         setGoalFormTargetWeight(raceTargetWeight);
         setGoalFormWeeklyTarget(raceWeeklyTarget);
@@ -273,11 +291,13 @@ export default function Settings() {
     if (!goalFormName.trim()) return;
     setEventGoalError('');
     setEventGoalBusy(true);
+    const safeStartDate = normalizeOptionalToIsoDate(goalFormStartDate);
     const safeRaceDate = normalizeToIsoDate(goalFormDate);
     try {
       await saveEventGoalItem(userId, {
         id: editingGoalId || undefined,
         eventName: goalFormName.trim(),
+        startDate: safeStartDate || undefined,
         raceDate: safeRaceDate,
         targetWeight: goalFormTargetWeight,
         weeklyTarget: goalFormWeeklyTarget,
@@ -517,7 +537,7 @@ export default function Settings() {
       await loadData();
     } catch (error) {
       console.error(error);
-      setBackupStatus('Import failed. Check file format.');
+      setBackupStatus(error instanceof Error ? `Import failed: ${error.message}` : 'Import failed. Check file format.');
     } finally {
       setBackupBusy(false);
     }
@@ -711,7 +731,7 @@ export default function Settings() {
                       {(goal.id === 'primary' || goal.isPrimary) && <span className="ml-2 text-xs px-2 py-0.5 rounded bg-green-500 text-white">Active</span>}
                     </div>
                     <div className="text-xs opacity-80">
-                      {formatDateDDMMYYYY(goal.raceDate)} | {goal.targetWeight} kg | {goal.weeklyTarget} kg/week
+                      {goal.startDate ? `${formatDateDDMMYYYY(goal.startDate)} start | ` : ''}{formatDateDDMMYYYY(goal.raceDate)} event | {goal.targetWeight} kg | {goal.weeklyTarget} kg/week
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -773,6 +793,18 @@ export default function Settings() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
+                    <label className="block text-sm opacity-80 mb-1">Start Date</label>
+                    <input
+                      type="text"
+                      value={goalFormStartDate}
+                      onChange={(e) => setGoalFormStartDate(e.target.value.replaceAll('/', '-').replaceAll('.', '-'))}
+                      onBlur={() => setGoalFormStartDate(normalizeOptionalToDisplayDate(goalFormStartDate))}
+                      placeholder="dd-mm-yyyy"
+                      inputMode="numeric"
+                      className="w-full px-3 py-2 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/50 focus:ring-2 focus:ring-white outline-none"
+                    />
+                  </div>
+                  <div>
                     <label className="block text-sm opacity-80 mb-1">Event Date</label>
                     <input
                       type="text"
@@ -784,6 +816,8 @@ export default function Settings() {
                       className="w-full px-3 py-2 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/50 focus:ring-2 focus:ring-white outline-none"
                     />
                   </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm opacity-80 mb-1">Target Weight</label>
                     <div className="flex items-center gap-2">
@@ -863,6 +897,11 @@ export default function Settings() {
             <div className="text-sm text-gray-700 dark:text-gray-200 mt-2">
               Event date: <span className="font-semibold">{raceDate}</span>
             </div>
+            {raceStartDate && (
+              <div className="text-sm text-gray-700 dark:text-gray-200 mt-2">
+                Start marker: <span className="font-semibold">{raceStartDate}</span>
+              </div>
+            )}
           </div>
 
           <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
