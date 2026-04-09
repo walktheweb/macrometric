@@ -20,6 +20,8 @@ const env = {
   port: Number(process.env.PORT ?? 3000),
   host: process.env.HOST ?? '0.0.0.0',
   cookieSecure: process.env.COOKIE_SECURE === 'true',
+  autoDailyExportEnabled: process.env.AUTO_DAILY_EXPORT_ENABLED === 'true',
+  autoDailyExportDir: process.env.AUTO_DAILY_EXPORT_DIR ?? '',
 };
 
 await app.register(cookie);
@@ -54,7 +56,10 @@ app.get('/api/openapi.json', async () => app.swagger());
 await registerAuthRoutes(app, env.cookieSecure);
 await registerFoodRoutes(app);
 await registerGoalRoutes(app);
-await registerCheckinRoutes(app);
+await registerCheckinRoutes(app, {
+  enabled: env.autoDailyExportEnabled,
+  directory: env.autoDailyExportDir,
+});
 await registerFastingRoutes(app);
 await registerTripRoutes(app);
 await registerNoteRoutes(app);

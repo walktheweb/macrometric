@@ -34,6 +34,8 @@ export default function Layout() {
   const [hasTodayCheckin, setHasTodayCheckin] = useState(false);
   const isCheckinEditorOpen = !!headerContext?.buttons?.some((button) => button.id.includes('checkin'));
   const isDialogMode = !!headerContext?.showBack || !!headerContext?.buttons?.length;
+  const isTestBuild = import.meta.env.VITE_SHOW_TEST_BADGE === 'true';
+  const testLabel = `TEST v${__APP_VERSION__} ${__BUILD_VERSION__}`;
 
   const focusFirstInput = () => {
     if (!mainRef.current) return;
@@ -196,12 +198,11 @@ export default function Layout() {
             ) : null}
           </div>
           <div className="flex items-center gap-2">
-            <div
-              className="hidden sm:block text-[11px] leading-none px-2 py-1 rounded-full bg-gray-100 text-gray-500"
-              title={`Version ${__APP_VERSION__} | Built ${__BUILD_VERSION__}`}
-            >
-              v{__APP_VERSION__} {__BUILD_VERSION__}
-            </div>
+            {isTestBuild ? (
+              <div className="px-2.5 py-1 rounded-full bg-yellow-200 text-black text-xs font-bold tracking-[0.2em]">
+                {testLabel}
+              </div>
+            ) : null}
             {!isDialogMode && !isCheckinEditorOpen && (
               <button
                 type="button"
@@ -295,6 +296,7 @@ export default function Layout() {
                 <NavLink
                   to="/help"
                   onClick={() => setMoreOpen(false)}
+                  title="Help"
                   className={({ isActive }) =>
                     `flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
                       isActive
@@ -318,10 +320,6 @@ export default function Layout() {
           </div>
         </div>
       </header>
-      <div className="sm:hidden max-w-lg mx-auto px-4 pt-2">
-        <div className="text-[11px] text-gray-500 text-right">v{__APP_VERSION__} {__BUILD_VERSION__}</div>
-      </div>
-      
       <main
         ref={mainRef}
         className={`${isMaintenancePage ? 'max-w-[1400px]' : 'max-w-lg'} mx-auto px-4 py-4`}

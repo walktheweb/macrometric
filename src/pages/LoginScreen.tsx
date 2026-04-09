@@ -2,8 +2,13 @@ import { useState } from 'react';
 import { signIn, signUp } from '../lib/api';
 import MaterialIcon from '../components/MaterialIcon';
 
+declare const __APP_VERSION__: string;
+declare const __BUILD_VERSION__: string;
+
+const isTestBuild = import.meta.env.VITE_SHOW_TEST_BADGE === 'true';
+
 const getVersionString = () => {
-  return '1.2.1';
+  return `${__APP_VERSION__} ${__BUILD_VERSION__}`;
 };
 
 export default function LoginScreen() {
@@ -62,8 +67,16 @@ export default function LoginScreen() {
             <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <MaterialIcon name="person" className="text-[34px] text-blue-600" />
             </div>
+            {isTestBuild ? (
+              <div className="inline-flex items-center px-3 py-1 rounded-full bg-yellow-200 text-black text-xs font-bold tracking-[0.25em] mb-3">
+                TEST v{getVersionString()}
+              </div>
+            ) : null}
             <h1 className="text-2xl font-bold text-gray-900">MacroMetric</h1>
             <p className="text-gray-500 mt-2">
+              {isTestBuild ? 'Test environment' : mode === 'signin' ? 'Login to your account' : 'Create your account'}
+            </p>
+            <p className="text-gray-400 text-sm mt-1">
               {mode === 'signin' ? 'Login to your account' : 'Create your account'}
             </p>
           </div>

@@ -7,5 +7,12 @@ dist/
 debug.log
 .env.local
 .env.api.local
+.npm-cache/
+dist-server/
+*.pid
+*.out.log
+*.err.log
+*.tar.gz
+pi-filebrowser.env
 
 .vercel

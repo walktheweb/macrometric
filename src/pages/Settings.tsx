@@ -5,8 +5,11 @@ import { getGoals, updateGoals, getRaceGoal, saveRaceGoal, getDaysUntilRace, cha
 import { formatDateDDMMYYYY } from '../lib/date';
 import MaterialIcon from '../components/MaterialIcon';
 
+declare const __APP_VERSION__: string;
+declare const __BUILD_VERSION__: string;
+
 const getVersionString = () => {
-  return '1.2.1';
+  return `${__APP_VERSION__} ${__BUILD_VERSION__}`;
 };
 
 const normalizeToIsoDate = (value?: string | null): string => {
@@ -49,10 +52,11 @@ interface CollapsibleSectionProps {
   icon: string;
   defaultExpanded?: boolean;
   gradient?: boolean;
+  titleRight?: ReactNode;
   children: ReactNode;
 }
 
-function CollapsibleSection({ title, icon, defaultExpanded = false, gradient = false, children }: CollapsibleSectionProps) {
+function CollapsibleSection({ title, icon, defaultExpanded = false, gradient = false, titleRight, children }: CollapsibleSectionProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   const baseClasses = gradient
@@ -65,11 +69,18 @@ function CollapsibleSection({ title, icon, defaultExpanded = false, gradient = f
         onClick={() => setIsExpanded(!isExpanded)}
         className="w-full p-5 flex items-center justify-between text-left"
       >
-        <div className="flex items-center gap-3">
-          <MaterialIcon name={icon} className="text-[24px]" />
-          <h2 className={`font-semibold text-lg ${gradient ? 'text-white' : 'text-gray-800 dark:text-gray-100'}`}>
-            {title}
-          </h2>
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <MaterialIcon name={icon} className="text-[24px] shrink-0" />
+          <div className="min-w-0 flex-1 flex items-center justify-between gap-3">
+            <h2 className={`font-semibold text-lg ${gradient ? 'text-white' : 'text-gray-800 dark:text-gray-100'}`}>
+              {title}
+            </h2>
+            {titleRight ? (
+              <div className={`text-xs font-medium whitespace-nowrap ${gradient ? 'text-white/90' : 'text-gray-400 dark:text-gray-500'}`}>
+                {titleRight}
+              </div>
+            ) : null}
+          </div>
         </div>
         <span className={`text-xl transition-transform duration-300 ${gradient ? 'text-white' : 'text-gray-400'} ${isExpanded ? 'rotate-180' : ''}`}><MaterialIcon name="expand_more" className="text-[24px]" /></span>
       </button>
@@ -1138,12 +1149,11 @@ export default function Settings() {
       </CollapsibleSection>
 
       {/* About */}
-      <CollapsibleSection title="About" icon="info">
+      <CollapsibleSection title="About" icon="info" titleRight={`v${getVersionString()}`}>
         <div className="space-y-4">
           <div className="text-center pb-2">
             <p className="text-sm text-gray-500 dark:text-gray-400">Created by</p>
             <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">JOB</p>
-            <p className="text-xs text-gray-400 mt-1">v{getVersionString()}</p>
           </div>
 
           <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
@@ -1171,6 +1181,7 @@ export default function Settings() {
                 className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
               />
               <button
+                type="button"
                 onClick={() => {
                   if (newReleaseNote.trim()) {
                     addReleaseNote(newReleaseNote.trim());
@@ -1206,13 +1217,14 @@ export default function Settings() {
                         className="flex-1 px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                         autoFocus
                       />
-                      <button onClick={saveEdit} className="text-green-600 hover:text-green-700 p-1"><MaterialIcon name="save" className="text-[18px]" /></button>
-                      <button onClick={cancelEdit} className="text-gray-500 hover:text-gray-600 p-1"><MaterialIcon name="close" className="text-[18px]" /></button>
+                      <button type="button" onClick={saveEdit} className="text-green-600 hover:text-green-700 p-1"><MaterialIcon name="save" className="text-[18px]" /></button>
+                      <button type="button" onClick={cancelEdit} className="text-gray-500 hover:text-gray-600 p-1"><MaterialIcon name="close" className="text-[18px]" /></button>
                     </>
                   ) : (
                     <>
                       <div className="flex flex-col">
                         <button
+                          type="button"
                           onClick={() => moveFeatureRequest(feature.id, 'up')}
                           className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 p-0.5"
                           title="Move up"
@@ -1221,6 +1233,7 @@ export default function Settings() {
                           <MaterialIcon name="keyboard_arrow_up" className="text-[18px]" />
                         </button>
                         <button
+                          type="button"
                           onClick={() => moveFeatureRequest(feature.id, 'down')}
                           className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 p-0.5"
                           title="Move down"
@@ -1230,8 +1243,8 @@ export default function Settings() {
                         </button>
                       </div>
                       <span className="flex-1 text-sm text-gray-700 dark:text-gray-200">{feature.text}</span>
-                      <button onClick={() => startEdit(feature.id, feature.text)} className="text-blue-500 hover:text-blue-600 p-1"><MaterialIcon name="edit" className="text-[18px]" /></button>
-                      <button onClick={() => deleteFeatureRequest(feature.id)} className="text-red-500 hover:text-red-600 p-1"><MaterialIcon name="delete" className="text-[18px]" /></button>
+                      <button type="button" onClick={() => startEdit(feature.id, feature.text)} className="text-blue-500 hover:text-blue-600 p-1"><MaterialIcon name="edit" className="text-[18px]" /></button>
+                      <button type="button" onClick={() => deleteFeatureRequest(feature.id)} className="text-red-500 hover:text-red-600 p-1"><MaterialIcon name="delete" className="text-[18px]" /></button>
                     </>
                   )}
                 </div>
@@ -1247,6 +1260,7 @@ export default function Settings() {
                 className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
               />
               <button
+                type="button"
                 onClick={addFeatureRequest}
                 className="px-4 py-2 bg-primary-500 text-white rounded-xl hover:bg-primary-600 transition-colors"
               >

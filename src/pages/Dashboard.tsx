@@ -146,6 +146,11 @@ function formatCheckinTime(time?: string | null) {
   return `${parts[0]}:${parts[1]}`;
 }
 
+function normalizeClockTime(time?: string | null, fallback = '') {
+  const formatted = formatCheckinTime(time);
+  return /^\d{2}:\d{2}$/.test(formatted) ? formatted : fallback;
+}
+
 function isSameClockTime(time?: string | null, target?: string | null) {
   return formatCheckinTime(time) === formatCheckinTime(target);
 }
@@ -368,8 +373,8 @@ export default function Dashboard() {
   const toFastingFormData = (item?: FastingSession | null) => ({
     id: item?.id || '',
     date: normalizeToDisplayDate(item?.date),
-    startTime: item?.startTime || DEFAULT_FAST_START_TIME,
-    endTime: item?.endTime || '',
+    startTime: normalizeClockTime(item?.startTime, DEFAULT_FAST_START_TIME),
+    endTime: normalizeClockTime(item?.endTime, ''),
   });
 
   const handleCloseCheckinEditor = () => {
@@ -800,22 +805,24 @@ export default function Dashboard() {
       return;
     }
 
-    try {
-      if (editingFastingSession?.id) {
-        await updateFastingSession(userId, editingFastingSession.id, {
-          date: fastingDate,
-          startTime: fastingEditorData.startTime,
-          endTime: fastingEditorData.endTime || null,
-        });
-      } else {
-        const created = await startFasting(userId, {
-          date: fastingDate,
-          startTime: fastingEditorData.startTime,
-        });
-        if (fastingEditorData.endTime) {
-          await endFasting(userId, created.id, { endTime: fastingEditorData.endTime });
+      try {
+        if (editingFastingSession?.id) {
+          await updateFastingSession(userId, editingFastingSession.id, {
+            date: fastingDate,
+            startTime: normalizeClockTime(fastingEditorData.startTime, DEFAULT_FAST_START_TIME),
+            endTime: normalizeClockTime(fastingEditorData.endTime, '') || null,
+          });
+        } else {
+          const created = await startFasting(userId, {
+            date: fastingDate,
+            startTime: normalizeClockTime(fastingEditorData.startTime, DEFAULT_FAST_START_TIME),
+          });
+          if (fastingEditorData.endTime) {
+            await endFasting(userId, created.id, {
+              endTime: normalizeClockTime(fastingEditorData.endTime, '') || undefined,
+            });
+          }
         }
-      }
 
       handleCloseFastingEditor();
       await loadData();

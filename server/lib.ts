@@ -44,6 +44,16 @@ export function toDateString(value: unknown): string | undefined {
   return text;
 }
 
+export function toTimeString(value: unknown): string | undefined {
+  if (!value) return undefined;
+  const text = String(value).trim();
+  const match = text.match(/^(\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/);
+  if (match) {
+    return `${match[1]}:${match[2]}`;
+  }
+  return text;
+}
+
 export function toFood(row: Record<string, unknown>) {
   return {
     id: row.id ? String(row.id) : undefined,
@@ -76,10 +86,10 @@ export function toCheckin(row: Record<string, unknown>) {
   return {
     id: String(row.id),
     date: toDateString(row.date) ?? '',
-    checkinTime: row.checkin_time ? String(row.checkin_time) : undefined,
+    checkinTime: toTimeString(row.checkin_time),
     weight: toNumber(row.weight),
-    fastStartTime: row.fast_start_time ? String(row.fast_start_time) : undefined,
-    firstMealTime: row.first_meal_time ? String(row.first_meal_time) : undefined,
+    fastStartTime: toTimeString(row.fast_start_time),
+    firstMealTime: toTimeString(row.first_meal_time),
     ketones: toNumber(row.ketones),
     glucose: toNumber(row.glucose),
     heartRate: toNumber(row.heart_rate),
@@ -98,8 +108,8 @@ export function toFastingSession(row: Record<string, unknown>) {
   return {
     id: String(row.id),
     date: toDateString(row.date) ?? '',
-    startTime: String(row.start_time),
-    endTime: row.end_time ? String(row.end_time) : undefined,
+    startTime: toTimeString(row.start_time) ?? '',
+    endTime: toTimeString(row.end_time),
     sourceCheckinId: row.source_checkin_id ? String(row.source_checkin_id) : undefined,
     createdAt: toNumber(row.created_at) ?? now(),
     updatedAt: toNumber(row.updated_at),

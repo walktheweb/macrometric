@@ -87,6 +87,20 @@ Stop it with:
 docker compose down
 ```
 
+## Pi Files Access
+
+The production Pi stack can also expose a browser-based file manager at `/files`.
+
+- `backups/` is mounted read-only from the Pi host backup directory
+- `shared/` is mounted read/write for normal file exchange
+
+For production on the Pi, set at least:
+
+```env
+FILEBROWSER_ADMIN_USERNAME=admin
+FILEBROWSER_ADMIN_PASSWORD=your-strong-password
+```
+
 ## Data Notes
 
 Fast dev reuses the same Docker Postgres service definition and schema as the production-like stack, but it connects through `localhost:5432`.

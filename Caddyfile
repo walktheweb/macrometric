@@ -1,6 +1,14 @@
 :80 {
   encode zstd gzip
 
+  redir /files /files/ 308
+
+  @files path /files /files/*
+
+  handle @files {
+    reverse_proxy files:8080
+  }
+
   handle /api/* {
     reverse_proxy api:3000
   }

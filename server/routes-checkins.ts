@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { pool } from './db.js';
 import { requireAuth } from './auth.js';
 import { generateId, now, toCheckin, todayIso } from './lib.js';
+import type { AutoDailyExportConfig } from './export-data.js';
+import { writeAutomaticDailyExport } from './export-data.js';
 
 const CheckinSchema = z.object({
   id: z.string().optional(),
@@ -23,7 +25,7 @@ const CheckinSchema = z.object({
   notes: z.string().optional(),
 });
 
-export async function registerCheckinRoutes(app: FastifyInstance) {
+export async function registerCheckinRoutes(app: FastifyInstance, autoDailyExport: AutoDailyExportConfig) {
   app.get('/api/checkins', async (request, reply) => {
     if (!requireAuth(request, reply)) return;
     const result = await pool.query('SELECT * FROM checkins WHERE user_id = $1 ORDER BY date DESC, checkin_time DESC NULLS LAST, created_at DESC', [request.user!.id]);
@@ -100,7 +102,30 @@ export async function registerCheckinRoutes(app: FastifyInstance) {
         now(),
       ]
     );
-    reply.send(toCheckin(result.rows[0]));
+    const saved = toCheckin(result.rows[0]);
+    try {
+      const countResult = await pool.query(
+        'SELECT COUNT(*)::int AS count FROM checkins WHERE user_id = $1 AND date = $2',
+        [request.user!.id, body.date]
+      );
+      const dailyCount = Number(countResult.rows[0]?.count) || 0;
+      if (dailyCount === 1) {
+        const backupResult = await writeAutomaticDailyExport({
+          userId: request.user!.id,
+          userLabel: request.user?.email,
+          date: body.date,
+          config: autoDailyExport,
+        });
+        if (backupResult.status === 'saved') {
+          app.log.info({ userId: request.user!.id, date: body.date, filePath: backupResult.filePath }, 'Automatic daily backup saved');
+        } else if (backupResult.status === 'skipped') {
+          app.log.info({ userId: request.user!.id, date: body.date }, 'Automatic daily backup already exists for this user/day');
+        }
+      }
+    } catch (error) {
+      app.log.error({ err: error, userId: request.user!.id, date: body.date }, 'Automatic daily backup failed');
+    }
+    reply.send(saved);
   });
 
   app.delete('/api/checkins/:id', async (request, reply) => {

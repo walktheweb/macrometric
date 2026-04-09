@@ -65,7 +65,12 @@ export async function registerAuthRoutes(app: FastifyInstance, secureCookie: boo
     if (token) {
       await pool.query('DELETE FROM sessions WHERE token = $1', [token]);
     }
-    reply.clearCookie(SESSION_COOKIE, { path: '/' });
+    reply.clearCookie(SESSION_COOKIE, {
+      path: '/',
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: secureCookie,
+    });
     reply.send({ ok: true });
   });
 

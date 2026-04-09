@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { pool, withTransaction } from './db.js';
 import { requireAuth } from './auth.js';
+import { buildUserExportPayload } from './export-data.js';
 
 const ImportSchema = z.object({
   version: z.number(),
@@ -17,22 +18,6 @@ const LegacyMyFoodsSelectionSchema = z.object({
   exportedAt: z.string(),
   foods: z.array(z.record(z.string(), z.any())),
 });
-
-const exportTables = [
-  'my_foods',
-  'food_logs',
-  'presets',
-  'goals',
-  'checkins',
-  'fasting_sessions',
-  'step_goals',
-  'trips',
-  'race_goals',
-  'event_goals',
-  'milestones',
-  'release_notes',
-  'feature_requests',
-] as const;
 
 function normalizeImportRows(rows: unknown, userId: string) {
   if (!Array.isArray(rows)) return [];
@@ -177,17 +162,7 @@ function deriveFastingSessionsFromLegacyCheckins(checkins: Record<string, unknow
 export async function registerImportExportRoutes(app: FastifyInstance) {
   app.get('/api/export', async (request, reply) => {
     if (!requireAuth(request, reply)) return;
-    const data: Record<string, unknown[]> = {};
-    for (const table of exportTables) {
-      const result = await pool.query(`SELECT * FROM ${table} WHERE user_id = $1`, [request.user!.id]);
-      data[table] = result.rows;
-    }
-    reply.send({
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      userId: request.user!.id,
-      data,
-    });
+    reply.send(await buildUserExportPayload(request.user!.id));
   });
 
   app.post('/api/import', async (request, reply) => {
