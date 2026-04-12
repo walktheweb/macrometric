@@ -91,10 +91,10 @@ docker compose down
 
 Production releases use GitHub Container Registry images:
 
-- `ghcr.io/walktheweb/macrometric-api:latest`
-- `ghcr.io/walktheweb/macrometric-frontend:latest`
+- `ghcr.io/walktheweb/macrometric-api-pi:latest`
+- `ghcr.io/walktheweb/macrometric-frontend-pi:latest`
 
-Pushing to `main`, or manually running the `Docker Images` GitHub Actions workflow, builds and publishes both images for `linux/arm64` and `linux/amd64`.
+Pushing to `main`, or manually running the `Docker Images` GitHub Actions workflow, builds and publishes both images for `linux/arm64`.
 
 On the Pi, keep production secrets in `.env`, then release with:
 

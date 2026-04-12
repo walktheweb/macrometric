@@ -17,10 +17,10 @@ jobs:
       matrix:
         include:
           - name: api
-            image: ghcr.io/walktheweb/macrometric-api
+            image: ghcr.io/walktheweb/macrometric-api-pi
             dockerfile: Dockerfile.api
           - name: frontend
-            image: ghcr.io/walktheweb/macrometric-frontend
+            image: ghcr.io/walktheweb/macrometric-frontend-pi
             dockerfile: Dockerfile.frontend
 
     steps:

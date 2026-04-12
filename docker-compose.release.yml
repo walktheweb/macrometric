@@ -17,7 +17,7 @@ services:
       retries: 5
 
   api:
-    image: ghcr.io/walktheweb/macrometric-api:latest
+    image: ghcr.io/walktheweb/macrometric-api-pi:latest
     pull_policy: always
     environment:
       DATABASE_URL: postgres://macrometric:macrometric@postgres:5432/macrometric
@@ -33,7 +33,7 @@ services:
         condition: service_healthy
 
   frontend:
-    image: ghcr.io/walktheweb/macrometric-frontend:latest
+    image: ghcr.io/walktheweb/macrometric-frontend-pi:latest
     pull_policy: always
 
   files:
