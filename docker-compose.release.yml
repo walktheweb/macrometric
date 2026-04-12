@@ -1,3 +1,5 @@
+name: macrometric-prod
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -16,9 +18,7 @@ services:
 
   api:
     image: ghcr.io/walktheweb/macrometric-api:latest
-    build:
-      context: .
-      dockerfile: Dockerfile.api
+    pull_policy: always
     environment:
       DATABASE_URL: postgres://macrometric:macrometric@postgres:5432/macrometric
       HOST: 0.0.0.0
@@ -27,16 +27,14 @@ services:
       AUTO_DAILY_EXPORT_ENABLED: "true"
       AUTO_DAILY_EXPORT_DIR: /backups
     volumes:
-      - ${HOME}/apps/macrometric-backups:/backups
+      - ${MACROMETRIC_BACKUP_DIR:-/home/admin/apps/macrometric-backups}:/backups
     depends_on:
       postgres:
         condition: service_healthy
 
   frontend:
     image: ghcr.io/walktheweb/macrometric-frontend:latest
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
+    pull_policy: always
 
   files:
     image: filebrowser/filebrowser:latest
@@ -49,9 +47,10 @@ services:
       FB_ADDRESS: 0.0.0.0
       FB_PORT: 8080
     volumes:
-      - ${HOME}/apps/filebrowser-db:/database
-      - ${HOME}/apps/shared-files:/srv/shared
-      - ${HOME}/apps/macrometric-backups:/srv/user/job/data/software/macrometric/backup:ro
+      - ${FILEBROWSER_DB_DIR:-/home/admin/apps/filebrowser-db}:/database
+      - ${SHARED_FILES_DIR:-/home/admin/apps/shared-files}:/srv/shared
+      - ${MACROMETRIC_BACKUP_DIR:-/home/admin/apps/macrometric-backups}:/srv/user/job/data/software/macrometric/backup:ro
+      - ${JNOTES_BACKUP_DIR:-/home/admin/apps/jnotes-backups}:/srv/user/job/data/software/jnotes:ro
       - ./docker/files/entrypoint.sh:/entrypoint.sh:ro
     entrypoint: ["sh", "/entrypoint.sh"]
 

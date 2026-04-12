@@ -608,6 +608,7 @@ export default function Trips() {
       : [];
     let onTrackStatus: 'ahead' | 'on_track' | 'behind' | null = null;
     let expectedWeightToday: number | null = null;
+    let remainingToGoalKg: number | null = null;
     if (
       activeGoal &&
       Number.isFinite(goalStartMs) &&
@@ -615,6 +616,7 @@ export default function Trips() {
       typeof targetWeight === 'number'
     ) {
       expectedWeightToday = getExpectedGoalWeight(startWeight, weeklyTarget, goalStartDate, new Date(todayMs).toISOString().slice(0, 10), targetWeight);
+      remainingToGoalKg = Math.round((latest - targetWeight) * 10) / 10;
       const tolerance = 0.3;
       if (latest <= expectedWeightToday - tolerance) onTrackStatus = 'ahead';
       else if (latest <= expectedWeightToday + tolerance) onTrackStatus = 'on_track';
@@ -637,6 +639,7 @@ export default function Trips() {
       planPoints,
       onTrackStatus,
       expectedWeightToday,
+      remainingToGoalKg,
       trendColorClass: latest <= first ? 'text-emerald-500 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400',
       trendPointColorClass: latest <= first ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300',
     };
@@ -673,14 +676,15 @@ export default function Trips() {
                 {weightGraph.onTrackStatus && (
                   <div className="flex items-center justify-between gap-3 text-sm">
                     <span className="text-gray-700 dark:text-gray-200">Doelstatus</span>
-                    <span className={`font-semibold ${
-                      weightGraph.onTrackStatus === 'ahead'
-                        ? 'text-emerald-700 dark:text-emerald-300'
-                        : weightGraph.onTrackStatus === 'on_track'
-                          ? 'text-sky-700 dark:text-sky-300'
-                          : 'text-rose-700 dark:text-rose-300'
-                    }`}>
+                    <span className="font-semibold text-white">
                       {weightGraph.onTrackStatus === 'ahead' ? 'Voor op schema' : weightGraph.onTrackStatus === 'on_track' ? 'Op schema' : 'Achter op schema'}
+                      {weightGraph.remainingToGoalKg !== null ? (
+                        <span className={weightGraph.onTrackStatus === 'behind' ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}>
+                          {' '}
+                          ({weightGraph.onTrackStatus === 'behind' ? '+' : 'nog '}
+                          {Math.max(0, weightGraph.remainingToGoalKg).toFixed(1)}kg)
+                        </span>
+                      ) : null}
                     </span>
                   </div>
                 )}

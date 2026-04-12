@@ -10,6 +10,7 @@ import MyFoods from './pages/MyFoods';
 import FoodEntries from './pages/FoodEntries';
 import Trips from './pages/Trips';
 import Help from './pages/Help';
+import Account from './pages/Account';
 import Layout from './components/Layout';
 import LoginScreen from './pages/LoginScreen';
 
@@ -40,6 +41,7 @@ function AppRoutes() {
           <Route path="trips" element={<Trips />} />
           <Route path="history" element={<History />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="account" element={<Account />} />
           <Route path="help" element={<Help />} />
         </Route>
       </Routes>

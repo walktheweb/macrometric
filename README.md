@@ -5,7 +5,7 @@ MacroMetric now has two supported local workflows:
 - `Fast dev`: frontend and API run on your machine, Postgres stays in Docker
 - `Production-like test`: frontend, API, Postgres, and Caddy all run in Docker
 
-The production-like Docker stack remains the release path for Raspberry Pi. The fast dev lane is for daily coding and debugging.
+The production-like Docker stack is still available for release rehearsals. Raspberry Pi production releases use GHCR images so the Pi can pull and restart without building from source.
 
 ## Requirements
 
@@ -87,11 +87,41 @@ Stop it with:
 docker compose down
 ```
 
+## Raspberry Pi Release
+
+Production releases use GitHub Container Registry images:
+
+- `ghcr.io/walktheweb/macrometric-api:latest`
+- `ghcr.io/walktheweb/macrometric-frontend:latest`
+
+Pushing to `main`, or manually running the `Docker Images` GitHub Actions workflow, builds and publishes both images for `linux/arm64` and `linux/amd64`.
+
+On the Pi, keep production secrets in `.env`, then release with:
+
+```sh
+sh scripts/pi-release.sh
+```
+
+If GHCR packages are private, log in once on the Pi before the first pull:
+
+```sh
+docker login ghcr.io
+```
+
+The script runs:
+
+```sh
+docker compose -f docker-compose.release.yml pull
+docker compose -f docker-compose.release.yml up -d
+```
+
+It also checks `http://127.0.0.1/api/health`. This pull-based release path works when the Pi is on another network as long as the Pi has outbound internet and you can reach a shell through Tailscale, local console, or another private remote access method.
+
 ## Pi Files Access
 
 The production Pi stack can also expose a browser-based file manager at `/files`.
 
-- `backups/` is mounted read-only from the Pi host backup directory
+- `user/job/data/software/macrometric/backup/` is mounted read-only from the Pi host backup directory
 - `shared/` is mounted read/write for normal file exchange
 
 For production on the Pi, set at least:
@@ -99,6 +129,10 @@ For production on the Pi, set at least:
 ```env
 FILEBROWSER_ADMIN_USERNAME=admin
 FILEBROWSER_ADMIN_PASSWORD=your-strong-password
+MACROMETRIC_BACKUP_DIR=/home/admin/apps/macrometric-backups
+JNOTES_BACKUP_DIR=/home/admin/apps/jnotes-backups
+FILEBROWSER_DB_DIR=/home/admin/apps/filebrowser-db
+SHARED_FILES_DIR=/home/admin/apps/shared-files
 ```
 
 ## Data Notes
@@ -121,4 +155,5 @@ npm run dev:api
 npm run dev
 docker compose up -d --build
 docker compose down
+sh scripts/pi-release.sh
 ```

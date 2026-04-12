@@ -26,7 +26,7 @@ type HeaderContextState = {
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { userId } = useAuth();
+  const { userId, email } = useAuth();
   const isMaintenancePage = location.pathname === '/my-foods' || location.pathname === '/food-entries';
   const mainRef = useRef<HTMLElement | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -36,6 +36,7 @@ export default function Layout() {
   const isDialogMode = !!headerContext?.showBack || !!headerContext?.buttons?.length;
   const isTestBuild = import.meta.env.VITE_SHOW_TEST_BADGE === 'true';
   const testLabel = `TEST v${__APP_VERSION__} ${__BUILD_VERSION__}`;
+  const accountLabel = email?.split('@')[0] || 'Account';
 
   const focusFirstInput = () => {
     if (!mainRef.current) return;
@@ -233,10 +234,27 @@ export default function Layout() {
                 <MaterialIcon name="menu" className="text-[28px]" />
               </button>
               <div
-                className={`absolute right-0 top-0 z-20 w-40 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden transition-all duration-200 ${
+                className={`absolute right-0 top-0 z-20 w-56 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden transition-all duration-200 ${
                   moreOpen ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-2 pointer-events-none'
                 }`}
               >
+                <NavLink
+                  to="/account"
+                  onClick={() => setMoreOpen(false)}
+                  className={({ isActive }) =>
+                    `flex items-center gap-2 px-3 py-2 text-sm transition-colors border-b border-gray-200 ${
+                      isActive
+                        ? 'text-primary-900 bg-primary-200 font-medium dark:text-blue-100 dark:bg-blue-900/70'
+                        : 'text-gray-800 hover:bg-gray-200 dark:text-gray-100 dark:hover:bg-gray-700'
+                    }`
+                  }
+                >
+                  <MaterialIcon name="account_circle" className="text-[24px]" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold">{accountLabel}</span>
+                    <span className="block truncate text-xs text-gray-500 dark:text-gray-400">{email || 'Account'}</span>
+                  </span>
+                </NavLink>
                 <NavLink
                   to="/food-entries"
                   onClick={() => setMoreOpen(false)}
