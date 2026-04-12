@@ -45,7 +45,7 @@ jobs:
         with:
           context: .
           file: ${{ matrix.dockerfile }}
-          platforms: linux/arm64,linux/amd64
+          platforms: linux/arm64
           push: true
           tags: |
             ${{ matrix.image }}:latest
