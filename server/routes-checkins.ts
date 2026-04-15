@@ -22,6 +22,12 @@ const CheckinSchema = z.object({
   saturation: z.number().optional(),
   cholesterol: z.number().optional(),
   ferritin: z.number().optional(),
+  vitals: z.array(z.object({
+    bpHigh: z.number().optional(),
+    bpLow: z.number().optional(),
+    heartRate: z.number().optional(),
+    time: z.string().optional(),
+  })).optional(),
   notes: z.string().optional(),
 });
 
@@ -58,9 +64,9 @@ export async function registerCheckinRoutes(app: FastifyInstance, autoDailyExpor
       `
         INSERT INTO checkins (
           id, user_id, date, checkin_time, weight, fast_start_time, first_meal_time, ketones,
-          glucose, heart_rate, bp_high, bp_low, steps, saturation, cholesterol, ferritin, notes, created_at
+          glucose, heart_rate, bp_high, bp_low, steps, saturation, cholesterol, ferritin, vitals, notes, created_at
         ) VALUES (
-          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19
         )
         ON CONFLICT (id) DO UPDATE SET
           date = EXCLUDED.date,
@@ -77,6 +83,7 @@ export async function registerCheckinRoutes(app: FastifyInstance, autoDailyExpor
           saturation = EXCLUDED.saturation,
           cholesterol = EXCLUDED.cholesterol,
           ferritin = EXCLUDED.ferritin,
+          vitals = EXCLUDED.vitals,
           notes = EXCLUDED.notes,
           created_at = checkins.created_at
         RETURNING *
@@ -98,6 +105,7 @@ export async function registerCheckinRoutes(app: FastifyInstance, autoDailyExpor
         body.saturation ?? null,
         body.cholesterol ?? null,
         body.ferritin ?? null,
+        JSON.stringify(body.vitals ?? []),
         body.notes ?? null,
         now(),
       ]

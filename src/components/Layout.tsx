@@ -34,7 +34,7 @@ export default function Layout() {
   const [hasTodayCheckin, setHasTodayCheckin] = useState(false);
   const isCheckinEditorOpen = !!headerContext?.buttons?.some((button) => button.id.includes('checkin'));
   const isDialogMode = !!headerContext?.showBack || !!headerContext?.buttons?.length;
-  const isTestBuild = import.meta.env.VITE_SHOW_TEST_BADGE === 'true';
+  const isTestBuild = !import.meta.env.PROD && import.meta.env.VITE_SHOW_TEST_BADGE === 'true';
   const testLabel = `TEST v${__APP_VERSION__} ${__BUILD_VERSION__}`;
   const accountLabel = email?.split('@')[0] || 'Account';
 

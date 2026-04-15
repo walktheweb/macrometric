@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { getLogs, getGoals, deleteLog, updateLog, DayLog, Goal, FoodLog, saveCheckin, getCheckins, getRaceGoal, getDaysUntilRace, RaceGoal, getStepGoal, Checkin, getToday, deleteCheckin, getCheckinsForDate, getFastingSessions, startFasting, endFasting, updateFastingSession, deleteFastingSession, FastingSession } from '../lib/api';
+import { getLogs, getGoals, deleteLog, updateLog, DayLog, Goal, FoodLog, saveCheckin, getCheckins, getRaceGoal, getDaysUntilRace, RaceGoal, getStepGoal, Checkin, getToday, deleteCheckin, getCheckinsForDate, getFastingSessions, startFasting, endFasting, updateFastingSession, deleteFastingSession, FastingSession, VitalMeasurement } from '../lib/api';
 import { formatDateDDMMYYYY, normalizeToDisplayDate, normalizeToIsoDate } from '../lib/date';
 import RaceProgress from '../components/RaceProgress';
 import MaterialIcon from '../components/MaterialIcon';
@@ -69,16 +69,22 @@ function getToneClass(tone: 'green' | 'amber' | 'orange' | 'red' | 'critical') {
 
 function getWeightTone(weight: number) {
   if (weight <= 78) return getToneClass('green');
-  if (weight <= 81) return getToneClass('amber');
+  if (weight <= 80) return getToneClass('amber');
   return getToneClass('red');
 }
 
-function getBpTone(sys: number, dia: number) {
-  if (sys > 180 || dia > 120) return getToneClass('critical');
-  if (sys >= 140 || dia >= 90) return getToneClass('red');
-  if ((sys >= 130 && sys <= 139) || (dia >= 80 && dia <= 89)) return getToneClass('orange');
-  if (sys >= 120 && sys <= 129 && dia < 80) return getToneClass('amber');
-  if (sys < 120 && dia < 80) return getToneClass('green');
+function getBpHighTone(sys: number) {
+  if (sys >= 150) return getToneClass('red');
+  if (sys > 129) return getToneClass('orange');
+  if (sys > 120) return getToneClass('amber');
+  return getToneClass('green');
+}
+
+function getBpLowTone(dia: number) {
+  if (dia > 95) return getToneClass('red');
+  if (dia > 90) return getToneClass('orange');
+  if (dia >= 85) return getToneClass('amber');
+  if (dia < 85) return getToneClass('green');
   return getToneClass('amber');
 }
 
@@ -103,6 +109,31 @@ function getHeartRateTone(heartRate: number) {
   if (heartRate < 43) return getToneClass('red');
   if (heartRate <= 140) return getToneClass('green');
   return getToneClass('red');
+}
+
+function parseVitalNumber(value: string) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getBpHighInputTone(bpHigh: string) {
+  const high = parseVitalNumber(bpHigh);
+  return high !== null ? getBpHighTone(high) : '';
+}
+
+function getBpLowInputTone(bpLow: string) {
+  const low = parseVitalNumber(bpLow);
+  return low !== null ? getBpLowTone(low) : '';
+}
+
+function getHeartRateInputTone(heartRate: string) {
+  const parsed = parseVitalNumber(heartRate);
+  return parsed !== null ? getHeartRateTone(parsed) : '';
+}
+
+function getVitalInputClass(toneClass = '') {
+  const textClass = toneClass || 'text-gray-900 dark:text-white';
+  return `w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-primary-500 outline-none font-semibold ${textClass}`;
 }
 
 function getFerritinTone(ferritin: number) {
@@ -156,6 +187,13 @@ function isSameClockTime(time?: string | null, target?: string | null) {
 }
 
 const DEFAULT_FAST_START_TIME = '20:00';
+
+type CheckinVitalForm = {
+  bpHigh: string;
+  bpLow: string;
+  heartRate: string;
+  time: string;
+};
 const DEFAULT_FIRST_MEAL_TIME = '12:00';
 
 function getFastingHours(fastStartTime?: string | null, firstMealTime?: string | null) {
@@ -317,6 +355,7 @@ export default function Dashboard() {
     saturation: '',
     cholesterol: '',
     ferritin: '',
+    vitals: [] as CheckinVitalForm[],
     notes: '',
   });
   const [fastingEditorData, setFastingEditorData] = useState({
@@ -346,6 +385,12 @@ export default function Dashboard() {
     saturation: item.saturation?.toString() || '',
     cholesterol: item.cholesterol?.toString() || '',
     ferritin: item.ferritin?.toString() || '',
+    vitals: (item.vitals || []).map((vital) => ({
+      bpHigh: vital.bpHigh?.toString() || '',
+      bpLow: vital.bpLow?.toString() || '',
+      heartRate: vital.heartRate?.toString() || '',
+      time: vital.time || getCurrentTimeString(),
+    })),
     notes: item.notes || '',
   });
 
@@ -660,6 +705,7 @@ export default function Dashboard() {
         saturation: '',
         cholesterol: '',
         ferritin: '',
+        vitals: [] as CheckinVitalForm[],
         notes: '',
       });
     }
@@ -748,11 +794,19 @@ export default function Dashboard() {
 
   const handleSaveCheckin = async () => {
     if (!userId) return;
+    const additionalVitals: VitalMeasurement[] = checkinData.vitals
+      .filter((vital) => vital.bpHigh || vital.bpLow || vital.heartRate)
+      .map((vital) => ({
+        ...(vital.bpHigh ? { bpHigh: Number(vital.bpHigh) } : {}),
+        ...(vital.bpLow ? { bpLow: Number(vital.bpLow) } : {}),
+        ...(vital.heartRate ? { heartRate: Number(vital.heartRate) } : {}),
+        ...(vital.time ? { time: vital.time } : {}),
+      }));
     
     // Check if at least one field is filled
     const hasData = checkinData.weight || checkinData.steps || checkinData.ketones || 
                     checkinData.glucose || checkinData.heartRate || checkinData.bpHigh ||
-                    checkinData.bpLow || checkinData.notes;
+                    checkinData.bpLow || additionalVitals.length > 0 || checkinData.notes;
     
     if (!hasData) {
       alert('Please enter at least one value');
@@ -773,12 +827,39 @@ export default function Dashboard() {
       saturation: checkinData.saturation ? Number(checkinData.saturation) : undefined,
       cholesterol: checkinData.cholesterol ? Number(checkinData.cholesterol) : undefined,
       ferritin: checkinData.ferritin ? Number(checkinData.ferritin) : undefined,
+      vitals: additionalVitals,
       notes: checkinData.notes || undefined,
     });
     setShowCheckin(false);
     setEditingCheckin(null);
     clearEditCheckinParam();
     loadData();
+  };
+
+  const canAddAdditionalVital = !!checkinData.id && !!checkinData.bpHigh && !!checkinData.bpLow;
+
+  const addAdditionalVital = () => {
+    if (!canAddAdditionalVital) return;
+    setCheckinData({
+      ...checkinData,
+      vitals: [...checkinData.vitals, { bpHigh: '', bpLow: '', heartRate: '', time: getCurrentTimeString() }],
+    });
+  };
+
+  const updateAdditionalVital = (index: number, patch: Partial<CheckinVitalForm>) => {
+    setCheckinData({
+      ...checkinData,
+      vitals: checkinData.vitals.map((vital, vitalIndex) => (
+        vitalIndex === index ? { ...vital, ...patch } : vital
+      )),
+    });
+  };
+
+  const removeAdditionalVital = (index: number) => {
+    setCheckinData({
+      ...checkinData,
+      vitals: checkinData.vitals.filter((_, vitalIndex) => vitalIndex !== index),
+    });
   };
 
   const handleDeleteCurrentCheckin = async () => {
@@ -843,6 +924,7 @@ export default function Dashboard() {
   const handleFastingStamp = async (field: 'fastStartTime' | 'firstMealTime') => {
     if (!userId) return;
     const openFast = fastingSessions.find(isActiveFastingSession) || null;
+    if (field === 'fastStartTime' && !confirm('Start fasting now?')) return;
     if (field === 'firstMealTime') {
       const elapsedHours = getElapsedFastingHours(openFast?.startTime);
       const remainingHours = Math.max(0, fastingTargetHours - elapsedHours);
@@ -962,10 +1044,10 @@ export default function Dashboard() {
   const fastingSuccess = todayFastingHours !== null && todayFastingHours >= fastingTargetHours;
   const fastingCompleted = todayFastingHours !== null;
   const fastingTooShort = fastingCompleted && !fastingSuccess;
-  const showStopEatingButton = fastingCompleted || !fastingSession?.startTime;
-  const showStartEatingButton = fastingCompleted || !fastingSession?.endTime;
-  const canEditFastingTarget = showStopEatingButton && showStartEatingButton;
   const hasActiveFast = !!activeFastingSession;
+  const showStopEatingButton = !hasActiveFast;
+  const showStartEatingButton = hasActiveFast;
+  const canEditFastingTarget = !hasActiveFast;
   const fastingRemainingHours = hasActiveFast ? Math.max(0, fastingTargetHours - fastingProgressHours) : 0;
   const fastingExceededHours = hasActiveFast ? Math.max(0, fastingProgressHours - fastingTargetHours) : 0;
   const isFastingExpanded = hasActiveFast || !isFastingCollapsed;
@@ -1170,7 +1252,7 @@ export default function Dashboard() {
               {editingCheckin ? 'Edit Check-in' : 'Daily Check-in'}
             </h2>
             <div className="grid grid-cols-[auto_auto] gap-x-3 text-right text-sm text-gray-500 dark:text-gray-400">
-              <div className="tabular-nums">{formatDateDDMMYYYY(checkinData.date)}</div>
+              <div className="tabular-nums">{normalizeToDisplayDate(checkinData.date, formatDateDDMMYYYY(getToday()))}</div>
               <div className="tabular-nums min-w-[3.5rem]">{formatCheckinTime(checkinData.checkinTime) || ''}</div>
             </div>
           </div>
@@ -1178,7 +1260,7 @@ export default function Dashboard() {
           <div className="space-y-3">
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
               <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Check-in Basics</div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Steps</label>
                   <input
@@ -1211,21 +1293,12 @@ export default function Dashboard() {
                     className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Time</label>
-                  <input
-                    type="time"
-                    value={checkinData.checkinTime}
-                    onChange={(e) => setCheckinData({...checkinData, checkinTime: e.target.value})}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
-                  />
-                </div>
               </div>
             </div>
 
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Vitals</div>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Vitals</div>
+              <div className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_1fr_1fr_2.5rem] gap-2">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">BP High</label>
                   <input
@@ -1233,7 +1306,7 @@ export default function Dashboard() {
                     value={checkinData.bpHigh}
                     onChange={(e) => setCheckinData({...checkinData, bpHigh: e.target.value})}
                     placeholder="120"
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                    className={getVitalInputClass(getBpHighInputTone(checkinData.bpHigh))}
                   />
                 </div>
                 <div>
@@ -1243,7 +1316,7 @@ export default function Dashboard() {
                     value={checkinData.bpLow}
                     onChange={(e) => setCheckinData({...checkinData, bpLow: e.target.value})}
                     placeholder="80"
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                    className={getVitalInputClass(getBpLowInputTone(checkinData.bpLow))}
                   />
                 </div>
                 <div>
@@ -1253,10 +1326,88 @@ export default function Dashboard() {
                     value={checkinData.heartRate}
                     onChange={(e) => setCheckinData({...checkinData, heartRate: e.target.value})}
                     placeholder="72"
+                    className={getVitalInputClass(getHeartRateInputTone(checkinData.heartRate))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Time</label>
+                  <input
+                    type="time"
+                    value={checkinData.checkinTime}
+                    onChange={(e) => setCheckinData({...checkinData, checkinTime: e.target.value})}
                     className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
                   />
                 </div>
+                <div className="col-span-2 flex justify-end sm:col-span-1 sm:items-end">
+                  {canAddAdditionalVital && (
+                    <button
+                      type="button"
+                      onClick={addAdditionalVital}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary-500 text-white shadow-sm transition-colors hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                      aria-label="Add blood pressure measurement"
+                      title="Add blood pressure measurement"
+                    >
+                      <MaterialIcon name="add" className="text-[24px] leading-none" />
+                    </button>
+                  )}
+                </div>
               </div>
+              {checkinData.vitals.length > 0 && (
+                <div className="mt-2 space-y-2">
+                  {checkinData.vitals.map((vital, index) => (
+                    <div key={index} className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 items-end">
+                      <div>
+                        <input
+                          type="number"
+                          value={vital.bpHigh}
+                          onChange={(e) => updateAdditionalVital(index, { bpHigh: e.target.value })}
+                          placeholder="120"
+                          aria-label="BP High"
+                          className={getVitalInputClass(getBpHighInputTone(vital.bpHigh))}
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="number"
+                          value={vital.bpLow}
+                          onChange={(e) => updateAdditionalVital(index, { bpLow: e.target.value })}
+                          placeholder="80"
+                          aria-label="BP Low"
+                          className={getVitalInputClass(getBpLowInputTone(vital.bpLow))}
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="number"
+                          value={vital.heartRate}
+                          onChange={(e) => updateAdditionalVital(index, { heartRate: e.target.value })}
+                          placeholder="72"
+                          aria-label="Heart Rate"
+                          className={getVitalInputClass(getHeartRateInputTone(vital.heartRate))}
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="time"
+                          value={vital.time}
+                          onChange={(e) => updateAdditionalVital(index, { time: e.target.value })}
+                          aria-label="Time"
+                          className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeAdditionalVital(index)}
+                        className="col-span-2 sm:col-span-1 inline-flex h-10 w-full sm:w-10 items-center justify-center rounded-md border border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-900/30"
+                        aria-label="Delete blood pressure measurement"
+                        title="Delete blood pressure measurement"
+                      >
+                        <MaterialIcon name="delete" className="text-[20px]" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
@@ -1409,7 +1560,14 @@ export default function Dashboard() {
             {typeof todayCheckin?.glucose === 'number' && <div className="text-center"><span className={`font-semibold ${getGlucoseMmolTone(todayCheckin.glucose)}`}>{todayCheckin.glucose}</span> glucose</div>}
             {typeof todayCheckin?.heartRate === 'number' && <div className="text-center"><span className={`font-semibold ${getHeartRateTone(todayCheckin.heartRate)}`}>{todayCheckin.heartRate}</span> HR</div>}
             {todayCheckin?.bpHigh && todayCheckin?.bpLow && (
-              <div className="text-center"><span className={`font-semibold ${getBpTone(todayCheckin.bpHigh, todayCheckin.bpLow)}`}>{todayCheckin.bpHigh}/{todayCheckin.bpLow}</span> BP</div>
+              <div className="text-center">
+                <span className="font-semibold">
+                  <span className={getBpHighTone(todayCheckin.bpHigh)}>{todayCheckin.bpHigh}</span>
+                  <span className="text-gray-500 dark:text-gray-400">/</span>
+                  <span className={getBpLowTone(todayCheckin.bpLow)}>{todayCheckin.bpLow}</span>
+                </span>{' '}
+                BP
+              </div>
             )}
             {todayCheckin?.saturation && <div className="text-center"><span className="font-semibold">{todayCheckin.saturation}</span> sat%</div>}
             {todayCheckin?.cholesterol && <div className="text-center"><span className="font-semibold">{todayCheckin.cholesterol}</span> chol</div>}
@@ -1568,7 +1726,7 @@ export default function Dashboard() {
               }}
               className="rounded-xl px-3 py-2 text-sm font-semibold transition-colors bg-indigo-600 hover:bg-indigo-700 text-white"
             >
-              Stop eating {formatCheckinTime(displayedFastStartTime)}
+              {hasActiveFast ? `Stop eating ${formatCheckinTime(displayedFastStartTime)}` : 'Start fasting'}
             </button>
           ) : (
             <div className="rounded-xl px-3 py-2 text-sm font-semibold bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-center">
@@ -1586,9 +1744,13 @@ export default function Dashboard() {
             >
               Start eating {formatCheckinTime(displayedFirstMealTime)}
             </button>
-          ) : (
+          ) : fastingCompleted ? (
             <div className="rounded-xl px-3 py-2 text-sm font-semibold bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-center">
               First meal {formatCheckinTime(fastingSession?.endTime)}
+            </div>
+          ) : (
+            <div className="rounded-xl px-3 py-2 text-sm font-semibold bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-center">
+              Start a fast first
             </div>
           )}
         </div>

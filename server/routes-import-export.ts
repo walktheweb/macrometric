@@ -41,7 +41,7 @@ const allowedColumnsByTable: Record<string, string[]> = {
   checkins: [
     'id', 'user_id', 'date', 'checkin_time', 'weight', 'fast_start_time', 'first_meal_time',
     'ketones', 'glucose', 'heart_rate', 'bp_high', 'bp_low', 'steps', 'saturation',
-    'cholesterol', 'ferritin', 'notes', 'created_at',
+    'cholesterol', 'ferritin', 'vitals', 'notes', 'created_at',
   ],
   fasting_sessions: ['id', 'user_id', 'date', 'start_time', 'end_time', 'source_checkin_id', 'created_at', 'updated_at'],
   step_goals: ['user_id', 'daily_goal', 'created_at'],

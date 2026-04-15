@@ -6,7 +6,7 @@ import { generateId, SESSION_COOKIE, now } from './lib.js';
 
 const LoginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(6),
+  password: z.string().min(1),
   rememberMe: z.boolean().optional(),
 });
 

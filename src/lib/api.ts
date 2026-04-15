@@ -68,8 +68,16 @@ export interface Checkin {
   saturation?: number;
   cholesterol?: number;
   ferritin?: number;
+  vitals?: VitalMeasurement[];
   notes?: string;
   createdAt: number;
+}
+
+export interface VitalMeasurement {
+  bpHigh?: number;
+  bpLow?: number;
+  heartRate?: number;
+  time?: string;
 }
 
 export interface FastingSession {
@@ -247,6 +255,7 @@ function fromCheckinRow(row: any): Checkin {
     saturation: row.saturation ?? undefined,
     cholesterol: row.cholesterol ?? undefined,
     ferritin: row.ferritin ?? undefined,
+    vitals: Array.isArray(row.vitals) ? row.vitals : undefined,
     notes: row.notes ?? undefined,
     createdAt: Number(row.created_at) || Date.now(),
   };
@@ -269,6 +278,7 @@ function toCheckinRow(checkin: Partial<Checkin> & { fastStartTime?: string | nul
     ...(checkin.saturation !== undefined ? { saturation: checkin.saturation } : {}),
     ...(checkin.cholesterol !== undefined ? { cholesterol: checkin.cholesterol } : {}),
     ...(checkin.ferritin !== undefined ? { ferritin: checkin.ferritin } : {}),
+    ...(checkin.vitals !== undefined ? { vitals: checkin.vitals } : {}),
     ...(checkin.notes !== undefined ? { notes: checkin.notes } : {}),
     ...(checkin.createdAt !== undefined ? { created_at: checkin.createdAt } : {}),
   };
@@ -971,7 +981,7 @@ export async function getCheckinsForDate(_userId: string, date: string): Promise
   return data.checkins || [];
 }
 
-export async function saveCheckin(_userId: string, data: { id?: string; date: string; checkinTime?: string; weight?: number; fastStartTime?: string | null; firstMealTime?: string | null; ketones?: number; glucose?: number; heartRate?: number; bpHigh?: number; bpLow?: number; steps?: number; saturation?: number; cholesterol?: number; ferritin?: number; notes?: string; }): Promise<Checkin> {
+export async function saveCheckin(_userId: string, data: { id?: string; date: string; checkinTime?: string; weight?: number; fastStartTime?: string | null; firstMealTime?: string | null; ketones?: number; glucose?: number; heartRate?: number; bpHigh?: number; bpLow?: number; steps?: number; saturation?: number; cholesterol?: number; ferritin?: number; vitals?: VitalMeasurement[]; notes?: string; }): Promise<Checkin> {
   if (USE_SUPABASE_LEGACY) {
     const client = requireSupabase();
     const user = await getSupabaseUserOrThrow();
@@ -1056,6 +1066,7 @@ export async function startFasting(_userId: string, payload?: { date?: string; s
       saturation: existingToday?.saturation,
       cholesterol: existingToday?.cholesterol,
       ferritin: existingToday?.ferritin,
+      vitals: existingToday?.vitals,
       notes: existingToday?.notes,
     });
     return {
@@ -1096,6 +1107,7 @@ export async function endFasting(_userId: string, sessionId: string, payload?: {
       saturation: source.saturation,
       cholesterol: source.cholesterol,
       ferritin: source.ferritin,
+      vitals: source.vitals,
       notes: source.notes,
     });
     return {
@@ -1140,6 +1152,7 @@ export async function updateFastingSession(
       saturation: source.saturation,
       cholesterol: source.cholesterol,
       ferritin: source.ferritin,
+      vitals: source.vitals,
       notes: source.notes,
     });
     return {

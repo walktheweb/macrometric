@@ -1,3 +1,22 @@
+# Release 1.2.5 (2026-04-14)
+
+## Highlights
+- Added multiple blood pressure vital measurements per check-in:
+  - The first vitals row keeps BP High, BP Low, Heart Rate, and Time together.
+  - Additional rows can be added after the first saved BP measurement and removed with a delete button.
+  - Extra vitals are persisted on the check-in record.
+- Improved vitals editing:
+  - Moved the check-in time from Check-in Basics into Vitals.
+  - Color-coded BP and heart-rate values directly in the check-in editor.
+  - Fixed the check-in editor header date formatting.
+- Production polish:
+  - The yellow TEST/version badge is hidden in production builds even if the test badge env flag is set.
+  - Fasting now requires deliberate confirmation before starting.
+
+## Notes
+- Build validated with `npm run build`.
+- Release target: Docker / Raspberry Pi production deployment.
+
 # Release 1.2.4 (2026-04-08)
 
 ## Highlights

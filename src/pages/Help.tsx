@@ -74,17 +74,37 @@ export default function Help() {
           <div>
             <div className="font-semibold">Weight (kg)</div>
             <div><span className="inline-block w-24 text-left text-green-600 dark:text-green-400 font-semibold">Green</span><span className="mx-2">:</span>{'<='} 78</div>
-            <div><span className="inline-block w-24 text-left text-amber-600 dark:text-amber-400 font-semibold">Amber</span><span className="mx-2">:</span>{'<='} 81</div>
-            <div><span className="inline-block w-24 text-left text-red-600 dark:text-red-400 font-semibold">Red</span><span className="mx-2">:</span>{'>'} 81</div>
+            <div><span className="inline-block w-24 text-left text-amber-600 dark:text-amber-400 font-semibold">Amber</span><span className="mx-2">:</span>{'>'} 78 and {'<='} 80</div>
+            <div><span className="inline-block w-24 text-left text-red-600 dark:text-red-400 font-semibold">Red</span><span className="mx-2">:</span>{'>'} 80</div>
             <div>Arrow up if value increased vs previous check-in, down if decreased, flat if equal.</div>
           </div>
           <div>
-            <div className="font-semibold">Blood Pressure (mmHg)</div>
-            <div><span className="inline-block w-24 text-left text-green-600 dark:text-green-400 font-semibold">Green</span><span className="mx-2">:</span>sys {'<'} 120 and dia {'<'} 80</div>
-            <div><span className="inline-block w-24 text-left text-amber-600 dark:text-amber-400 font-semibold">Amber</span><span className="mx-2">:</span>120-129 and dia {'<'} 80</div>
-            <div><span className="inline-block w-24 text-left text-orange-600 dark:text-orange-400 font-semibold">Orange</span><span className="mx-2">:</span>sys 130-139 or dia 80-89</div>
-            <div><span className="inline-block w-24 text-left text-red-600 dark:text-red-400 font-semibold">Red</span><span className="mx-2">:</span>sys {'>='} 140 or dia {'>='} 90</div>
-            <div><span className="inline-block w-24 text-left text-red-700 dark:text-red-300 font-semibold">Critical red</span><span className="mx-2">:</span>sys {'>'} 180 or dia {'>'} 120</div>
+            <div className="font-semibold">BMI</div>
+            <div><span className="inline-block w-24 text-left text-blue-500 font-semibold">Blue</span><span className="mx-2">:</span>{'<'} 18.5</div>
+            <div><span className="inline-block w-24 text-left text-green-600 dark:text-green-400 font-semibold">Green</span><span className="mx-2">:</span>18.5-24.9</div>
+            <div><span className="inline-block w-24 text-left text-amber-600 dark:text-amber-400 font-semibold">Amber</span><span className="mx-2">:</span>25.0-29.9</div>
+            <div><span className="inline-block w-24 text-left text-red-600 dark:text-red-400 font-semibold">Red</span><span className="mx-2">:</span>{'>='} 30</div>
+          </div>
+          <div>
+            <div className="font-semibold">Steps</div>
+            <div><span className="inline-block w-24 text-left text-red-600 dark:text-red-400 font-semibold">Red</span><span className="mx-2">:</span>{'<'} 5000</div>
+            <div><span className="inline-block w-24 text-left text-orange-600 dark:text-orange-400 font-semibold">Orange</span><span className="mx-2">:</span>5000-6999</div>
+            <div><span className="inline-block w-24 text-left text-amber-600 dark:text-amber-400 font-semibold">Amber</span><span className="mx-2">:</span>7000-8999</div>
+            <div><span className="inline-block w-24 text-left text-green-600 dark:text-green-400 font-semibold">Green</span><span className="mx-2">:</span>{'>='} 9000</div>
+          </div>
+          <div>
+            <div className="font-semibold">BP High / Systolic (mmHg)</div>
+            <div><span className="inline-block w-24 text-left text-green-600 dark:text-green-400 font-semibold">Green</span><span className="mx-2">:</span>sys {'<'} 120</div>
+            <div><span className="inline-block w-24 text-left text-amber-600 dark:text-amber-400 font-semibold">Amber</span><span className="mx-2">:</span>sys {'>'} 120 and sys {'<='} 129</div>
+            <div><span className="inline-block w-24 text-left text-orange-600 dark:text-orange-400 font-semibold">Orange</span><span className="mx-2">:</span>sys {'>'} 129 and sys {'<='} 149</div>
+            <div><span className="inline-block w-24 text-left text-red-600 dark:text-red-400 font-semibold">Red</span><span className="mx-2">:</span>sys {'>='} 150</div>
+          </div>
+          <div>
+            <div className="font-semibold">BP Low / Diastolic (mmHg)</div>
+            <div><span className="inline-block w-24 text-left text-green-600 dark:text-green-400 font-semibold">Green</span><span className="mx-2">:</span>dia {'<'} 85</div>
+            <div><span className="inline-block w-24 text-left text-amber-600 dark:text-amber-400 font-semibold">Amber</span><span className="mx-2">:</span>dia {'>='} 85 and dia {'<='} 90</div>
+            <div><span className="inline-block w-24 text-left text-orange-600 dark:text-orange-400 font-semibold">Orange</span><span className="mx-2">:</span>dia {'>'} 90 and dia {'<='} 95</div>
+            <div><span className="inline-block w-24 text-left text-red-600 dark:text-red-400 font-semibold">Red</span><span className="mx-2">:</span>dia {'>'} 95</div>
           </div>
           <div>
             <div className="font-semibold">Glucose (mmol/L)</div>

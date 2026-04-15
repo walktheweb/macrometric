@@ -83,6 +83,7 @@ export function toFoodLog(row: Record<string, unknown>) {
 }
 
 export function toCheckin(row: Record<string, unknown>) {
+  const vitals = Array.isArray(row.vitals) ? row.vitals : [];
   return {
     id: String(row.id),
     date: toDateString(row.date) ?? '',
@@ -99,6 +100,7 @@ export function toCheckin(row: Record<string, unknown>) {
     saturation: toNumber(row.saturation),
     cholesterol: toNumber(row.cholesterol),
     ferritin: toNumber(row.ferritin),
+    vitals,
     notes: row.notes ? String(row.notes) : undefined,
     createdAt: toNumber(row.created_at) ?? now(),
   };

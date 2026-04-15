@@ -5,7 +5,7 @@ import MaterialIcon from '../components/MaterialIcon';
 declare const __APP_VERSION__: string;
 declare const __BUILD_VERSION__: string;
 
-const isTestBuild = import.meta.env.VITE_SHOW_TEST_BADGE === 'true';
+const isTestBuild = !import.meta.env.PROD && import.meta.env.VITE_SHOW_TEST_BADGE === 'true';
 
 const getVersionString = () => {
   return `${__APP_VERSION__} ${__BUILD_VERSION__}`;

@@ -107,6 +107,7 @@ CREATE TABLE IF NOT EXISTS checkins (
   saturation NUMERIC(10,2),
   cholesterol NUMERIC(10,2),
   ferritin NUMERIC(10,2),
+  vitals JSONB NOT NULL DEFAULT '[]'::jsonb,
   notes TEXT,
   created_at BIGINT NOT NULL
 );

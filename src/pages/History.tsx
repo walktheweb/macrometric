@@ -20,12 +20,18 @@ function getToneClass(tone: 'green' | 'amber' | 'orange' | 'red' | 'critical') {
   return 'text-red-600 dark:text-red-400';
 }
 
-function getBpToneClass(sys: number, dia: number) {
-  if (sys > 180 || dia > 120) return getToneClass('critical');
-  if (sys >= 140 || dia >= 90) return getToneClass('red');
-  if ((sys >= 130 && sys <= 139) || (dia >= 80 && dia <= 89)) return getToneClass('orange');
-  if (sys >= 120 && sys <= 129 && dia < 80) return getToneClass('amber');
-  if (sys < 120 && dia < 80) return getToneClass('green');
+function getBpHighToneClass(sys: number) {
+  if (sys >= 150) return getToneClass('red');
+  if (sys > 129) return getToneClass('orange');
+  if (sys > 120) return getToneClass('amber');
+  return getToneClass('green');
+}
+
+function getBpLowToneClass(dia: number) {
+  if (dia > 95) return getToneClass('red');
+  if (dia > 90) return getToneClass('orange');
+  if (dia >= 85) return getToneClass('amber');
+  if (dia < 85) return getToneClass('green');
   return getToneClass('amber');
 }
 
@@ -548,7 +554,11 @@ export default function History() {
                       )}
                       {checkin.bpHigh && checkin.bpLow && (
                         <div className="text-center">
-                          <div className={`text-lg font-bold ${getBpToneClass(checkin.bpHigh, checkin.bpLow)}`}>{checkin.bpHigh}/{checkin.bpLow}</div>
+                          <div className="text-lg font-bold">
+                            <span className={getBpHighToneClass(checkin.bpHigh)}>{checkin.bpHigh}</span>
+                            <span className="text-gray-500 dark:text-gray-400">/</span>
+                            <span className={getBpLowToneClass(checkin.bpLow)}>{checkin.bpLow}</span>
+                          </div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">BP</div>
                         </div>
                       )}

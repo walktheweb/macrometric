@@ -10,6 +10,7 @@ export const pool = new Pool({
 
 export async function initDatabase(): Promise<void> {
   await pool.query(DATABASE_SCHEMA_SQL);
+  await pool.query(`ALTER TABLE checkins ADD COLUMN IF NOT EXISTS vitals JSONB NOT NULL DEFAULT '[]'::jsonb`);
   await migrateLegacyFastingData();
 }
 
